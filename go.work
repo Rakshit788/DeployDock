@@ -1,0 +1,8 @@
+go 1.26.1
+
+use (
+	./apps/api
+	./apps/deployer
+	./apps/worker
+	./packages
+)

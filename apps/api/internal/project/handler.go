@@ -7,7 +7,6 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// ✅ Proper struct
 type Project struct {
 	UserID    int64   `json:"user_id"`
 	Name      string  `json:"name"`
@@ -20,7 +19,6 @@ func CreateProject(c *gin.Context) {
 
 	var body Project
 
-	// ✅ Bind JSON
 	if err := c.BindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -44,4 +42,5 @@ func CreateProject(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"project_id": projectid,
 	})
+
 }

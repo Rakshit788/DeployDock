@@ -60,18 +60,7 @@ services:
     networks:
       - vercel_network
 
-  worker:
-    build:
-      context: ./
-      dockerfile: ./infra/docker/worker.Dockerfile
-    container_name: vercel_worker
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    networks:
-      - vercel_network
+ 
 
   deployment:
     build:

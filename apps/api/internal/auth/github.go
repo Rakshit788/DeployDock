@@ -32,7 +32,7 @@ func GitHubLogin(c *gin.Context) {
 }
 func GitHubCallback(c *gin.Context) {
 	code := c.Query("code")
-	log.Println("🔥 callback code:", code)
+	log.Println("callback code:", code)
 
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
 	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
@@ -54,12 +54,12 @@ func GitHubCallback(c *gin.Context) {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	log.Println("🔥 token response:", string(respBody))
+	log.Println(" token response:", string(respBody))
 
 	values, _ := url.ParseQuery(string(respBody))
 	accessToken := values.Get("access_token")
 
-	log.Println("🔥 parsed token:", accessToken)
+	log.Println(" parsed token:", accessToken)
 
 	if accessToken == "" {
 		c.JSON(500, gin.H{

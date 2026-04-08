@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -33,6 +35,7 @@ func HandleBuildTask(ctx context.Context, t *asynq.Task) error {
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
 		return fmt.Errorf("failed to unmarshal payload: %w", err)
 	}
+	fmt.Printf("🚧 Received build task for deployment %d (project %d)\n", payload.DeploymentID, payload.ProjectID)
 
 	fmt.Printf(" Starting build for deployment %d (project %d)\n", payload.DeploymentID, payload.ProjectID)
 
@@ -41,6 +44,7 @@ func HandleBuildTask(ctx context.Context, t *asynq.Task) error {
 		fmt.Printf(" Failed to update status: %v\n", err)
 		return err
 	}
+	fmt.Printf("✅ Deployment status updated to 'building'\n")
 
 	// Fetch project details from database
 	project, err := getProjectDetails(ctx, payload.ProjectID)
@@ -71,7 +75,7 @@ func HandleBuildTask(ctx context.Context, t *asynq.Task) error {
 
 	// Update deployment status to "deployed" with the generated URL
 	if err := updateDeploymentStatusWithURL(ctx, payload.DeploymentID, "deployed", deploymentURL, logs); err != nil {
-		fmt.Printf("❌ Failed to update final status: %v\n", err)
+		fmt.Printf(" Failed to update final status: %v\n", err)
 		return err
 	}
 
@@ -83,10 +87,17 @@ func getProjectDetails(ctx context.Context, projectID int64) (*ProjectDetails, e
 	var project ProjectDetails
 
 	err := db.Pool.QueryRow(ctx,
-		`SELECT repo_url, build_command, output_directory, subdomain 
-		 FROM projects WHERE id = $1`,
+		`SELECT 
+        repo_url, 
+        COALESCE(build_command, 'npm run build'), 
+        COALESCE(output_directory, 'dist'), 
+        COALESCE(subdomain, '')
+     FROM projects 
+     WHERE id = $1`,
 		projectID,
 	).Scan(&project.RepoURL, &project.BuildCommand, &project.OutputDirectory, &project.Subdomain)
+
+	fmt.Printf("Fetching project details from database for project ID %d...\n", projectID)
 
 	if err != nil {
 		return nil, err
@@ -111,94 +122,78 @@ func getProjectDetails(ctx context.Context, projectID int64) (*ProjectDetails, e
 func buildInDockerContainer(project *ProjectDetails, deploymentID int64) (string, error) {
 	var logOutput strings.Builder
 
-	// Create temporary directory for cloning
-	tmpDir := filepath.Join("/tmp", fmt.Sprintf("build_%d_%d", deploymentID, time.Now().Unix()))
-	if err := os.MkdirAll(tmpDir, 0755); err != nil {
-		return fmt.Sprintf("Failed to create temp directory: %v", err), err
+	// 🔥 Create temp dir (cleaner)
+	tmpDir, err := os.MkdirTemp("", "build-*")
+	if err != nil {
+		return "Failed to create temp dir", err
 	}
-	defer os.RemoveAll(tmpDir) // Cleanup after build
+	defer os.RemoveAll(tmpDir)
 
 	repoDir := filepath.Join(tmpDir, "repo")
 
 	fmt.Printf("📥 Cloning repository...\n")
-	fmt.Printf("   └─ URL: %s\n", project.RepoURL)
 
-	// Step 1: Clone the repository
+	// Clone repo
 	cloneCmd := exec.Command("git", "clone", project.RepoURL, repoDir)
 	cloneOutput, err := cloneCmd.CombinedOutput()
-	logOutput.WriteString(string(cloneOutput))
-	logOutput.WriteString("\n")
+	logOutput.WriteString(string(cloneOutput) + "\n")
 
 	if err != nil {
-		errMsg := fmt.Sprintf("Failed to clone repository: %v", err)
-		logOutput.WriteString(errMsg)
-		return logOutput.String(), err
+		return logOutput.String(), fmt.Errorf("git clone failed: %v", err)
 	}
 
-	fmt.Printf("Repository cloned successfully\n")
+	fmt.Println("✅ Repo cloned")
 
-	// Step 2: Check if Dockerfile exists
+	// Check Dockerfile
 	dockerfilePath := filepath.Join(repoDir, "Dockerfile")
-	fileInfo, err := os.Stat(dockerfilePath)
-
-	if err != nil || fileInfo.IsDir() {
-		errMsg := fmt.Sprintf("❌ Dockerfile not found in repository root. Build requires a Dockerfile at the project root.")
-		logOutput.WriteString("\n" + errMsg)
-		fmt.Printf("%s\n", errMsg)
-		return logOutput.String(), fmt.Errorf("no dockerfile found")
+	if _, err := os.Stat(dockerfilePath); err != nil {
+		return logOutput.String(), fmt.Errorf("Dockerfile not found")
 	}
 
-	fmt.Printf("✅ Dockerfile found! Starting Docker build...\n")
+	fmt.Println("🐳 Building Docker image...")
 
-	// Step 3: Build Docker image
 	imageName := fmt.Sprintf("deploy-%d:%d", deploymentID, time.Now().Unix())
 
-	fmt.Printf("🐳 Building Docker image: %s\n", imageName)
-	fmt.Printf("   └─ Build context: %s\n", repoDir)
-
-	// Execute: docker build -t IMAGE_NAME .
+	// Build image
 	buildCmd := exec.Command("docker", "build",
-		"-t", imageName, // Tag the image
-		"-f", dockerfilePath, // Explicit Dockerfile path
-		repoDir, // Build context
+		"-t", imageName,
+		repoDir,
 	)
 
 	buildOutput, err := buildCmd.CombinedOutput()
-	logOutput.WriteString(string(buildOutput))
-	logOutput.WriteString("\n")
+	logOutput.WriteString(string(buildOutput) + "\n")
 
 	if err != nil {
-		errMsg := fmt.Sprintf("Docker build failed: %v", err)
-		logOutput.WriteString(errMsg)
-		fmt.Printf("❌ %s\n", errMsg)
+		return logOutput.String(), fmt.Errorf("docker build failed: %v", err)
+	}
+
+	fmt.Printf("✅ Image built: %s\n", imageName)
+
+	// 🔥 Get free port
+	port, err := getFreePort()
+	if err != nil {
 		return logOutput.String(), err
 	}
 
-	fmt.Printf("✅ Docker image built successfully: %s\n", imageName)
+	containerName := fmt.Sprintf("deploy-%d", deploymentID)
 
-	// Step 4: Optionally run the image to verify it works
-	fmt.Printf("🧪 Running container to verify build...\n")
+	fmt.Println("🚀 Running container...")
 
 	runCmd := exec.Command("docker", "run",
-		"--rm",                 // Remove container after exit
-		"-t",                   // Allocate TTY
-		"--entrypoint", "echo", // Run echo command
+		"-d",
+		"-p", port+":3000",
+		"--name", containerName,
 		imageName,
-		"Build verification: Container started successfully!",
 	)
 
 	runOutput, err := runCmd.CombinedOutput()
-	logOutput.WriteString(string(runOutput))
-	logOutput.WriteString("\n")
+	logOutput.WriteString(string(runOutput) + "\n")
 
 	if err != nil {
-		warnMsg := fmt.Sprintf("Warning: Container test run failed (non-critical): %v", err)
-		logOutput.WriteString(warnMsg)
-		fmt.Printf("  %s\n", warnMsg)
-		// Don't fail here - image build succeeded, runtime issues are separate
-	} else {
-		fmt.Printf("✅ Container verification passed!\n")
+		return logOutput.String(), fmt.Errorf("docker run failed: %v", err)
 	}
+
+	fmt.Printf("🌐 App running at: http://localhost:%s\n", port)
 
 	return logOutput.String(), nil
 }
@@ -219,4 +214,15 @@ func updateDeploymentStatusWithURL(ctx context.Context, deploymentID int64, stat
 
 	_, err := db.Pool.Exec(ctx, query, status, url, logs, deploymentID)
 	return err
+}
+
+func getFreePort() (string, error) {
+	listener, err := net.Listen("tcp", ":0")
+	if err != nil {
+		return "", err
+	}
+	defer listener.Close()
+
+	addr := listener.Addr().(*net.TCPAddr)
+	return strconv.Itoa(addr.Port), nil
 }

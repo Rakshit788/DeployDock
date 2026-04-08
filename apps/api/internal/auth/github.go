@@ -24,7 +24,7 @@ type GitHubUser struct {
 }
 
 func GitHubLogin(c *gin.Context) {
-	clientID := os.Getenv("GITHUB_CLIENT_ID")
+	clientID := "Ov23liqNFN2JXBlWmM54"
 
 	url := "https://github.com/login/oauth/authorize?client_id=" + clientID + "&scope=user"
 
@@ -33,7 +33,7 @@ func GitHubLogin(c *gin.Context) {
 func GitHubCallback(c *gin.Context) {
 	code := c.Query("code")
 	log.Println("callback code:", code)
-
+	// if error comes with login check here
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
 	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
 

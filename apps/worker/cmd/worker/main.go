@@ -71,7 +71,7 @@ func startAsynqWorker() {
 		asynq.RedisClientOpt{Addr: "localhost:6379"},
 		asynq.Config{
 			// Concurrency: Max number of tasks processed concurrently
-			Concurrency: 10,
+			Concurrency: 2,
 
 			// Queue priorities/weights
 			Queues: map[string]int{

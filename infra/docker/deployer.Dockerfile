@@ -25,11 +25,12 @@ WORKDIR /app/apps/deployer
 RUN go build -o main ./cmd/deployer
 
 # Stage 2: Final Runtime Image
+# Stage 2: Final Runtime Image
 FROM alpine:latest
 WORKDIR /app
 
-# Install certificates (Essential for a deployer to talk to GitHub/Cloud APIs)
-RUN apk add --no-cache ca-certificates
+# Install certificates AND the docker-cli
+RUN apk add --no-cache ca-certificates docker-cli
 
 # Copy only the compiled binary from the builder stage
 COPY --from=builder /app/apps/deployer/main .

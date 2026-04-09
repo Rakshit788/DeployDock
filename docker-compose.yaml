@@ -33,17 +33,15 @@ services:
     networks:
       - vercel_network
 
-  nginx:
-    image: nginx:latest
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy
     container_name: vercel_nginx
     ports:
       - "80:80"
     volumes:
-      - ./nginx.conf:/etc/nginx/nginx.conf:ro
+      - /var/run/docker.sock:/tmp/docker.sock:ro
     networks:
       - vercel_network
-    depends_on:
-      - api
 
   api:
     build:
@@ -67,6 +65,8 @@ services:
       context: ./
       dockerfile: ./infra/docker/deployer.Dockerfile
     container_name: vercel_deployment
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
       postgres:
         condition: service_healthy

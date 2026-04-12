@@ -49,16 +49,18 @@ func startHealthCheckServer() {
 }
 
 func startAsynqWorker() {
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("❌ PANIC in startAsynqWorker: %v\n", r)
+		}
+	}()
+
 	fmt.Println("🚀 Starting Asynq Worker Server...")
 
 	srv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: "localhost:6379"},
 		asynq.Config{
-			Concurrency: 10,
-			Queues: map[string]int{
-				"default":  6,
-				"critical": 4,
-			},
+			Concurrency: 4,
 		},
 	)
 
@@ -67,7 +69,7 @@ func startAsynqWorker() {
 
 	fmt.Println("📋 Registered task handler: build:project")
 	fmt.Println("⏳ Waiting for tasks from Redis queue...")
-	fmt.Println("   Concurrency: 10 workers (6 default, 4 critical)")
+	fmt.Println("   Concurrency: 4 workers")
 
 	if err := srv.Run(mux); err != nil {
 		log.Fatalf("❌ Worker error: %v", err)

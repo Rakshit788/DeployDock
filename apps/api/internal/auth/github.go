@@ -7,15 +7,10 @@ import (
 	"log"
 	"net/http"
 	"net/url"
-	"os"
 
 	"github.com/Rakshit788/VERCEL-CLONE/packages/db"
 	"github.com/gin-gonic/gin"
 )
-
-type GitHubTokenResponse struct {
-	AccessToken string `json:"access_token"`
-}
 
 type GitHubUser struct {
 	ID        int64  `json:"id"`
@@ -30,13 +25,15 @@ func GitHubLogin(c *gin.Context) {
 
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
+
 func GitHubCallback(c *gin.Context) {
 	code := c.Query("code")
-	log.Println("callback code:", code)
-	// if error comes with login check here
-	clientID := os.Getenv("GITHUB_CLIENT_ID")
-	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
+	log.Println("👉 callback code:", code)
 
+	clientID := "Ov23liqNFN2JXBlWmM54"
+	clientSecret := "f251bc9dfbc7cea50d5a70b980aa3f0a19883c09"
+
+	// 🔹 Step 1: Exchange code for token
 	form := url.Values{}
 	form.Set("client_id", clientID)
 	form.Set("client_secret", clientSecret)
@@ -48,18 +45,19 @@ func GitHubCallback(c *gin.Context) {
 		form,
 	)
 	if err != nil {
+		log.Println("❌ Token request failed:", err)
 		c.JSON(500, gin.H{"error": "token request failed"})
 		return
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	log.Println(" token response:", string(respBody))
+	log.Println("👉 token response:", string(respBody))
 
 	values, _ := url.ParseQuery(string(respBody))
 	accessToken := values.Get("access_token")
 
-	log.Println(" parsed token:", accessToken)
+	log.Println("👉 parsed token:", accessToken)
 
 	if accessToken == "" {
 		c.JSON(500, gin.H{
@@ -69,15 +67,7 @@ func GitHubCallback(c *gin.Context) {
 		return
 	}
 
-	if accessToken == "" {
-		c.JSON(500, gin.H{
-			"error": "empty github token",
-			"raw":   string(respBody),
-		})
-		return
-	}
-
-	// fetch github user
+	// 🔹 Step 2: Fetch GitHub user
 	userReq, _ := http.NewRequest("GET", "https://api.github.com/user", nil)
 	userReq.Header.Set("Authorization", "Bearer "+accessToken)
 	userReq.Header.Set("Accept", "application/json")
@@ -85,15 +75,24 @@ func GitHubCallback(c *gin.Context) {
 	client := &http.Client{}
 	userResp, err := client.Do(userReq)
 	if err != nil {
+		log.Println("❌ GitHub user fetch failed:", err)
 		c.JSON(500, gin.H{"error": "user fetch failed"})
 		return
 	}
 	defer userResp.Body.Close()
 
 	userBody, _ := io.ReadAll(userResp.Body)
+	log.Println("👉 GitHub raw user:", string(userBody))
 
 	var ghUser GitHubUser
-	json.Unmarshal(userBody, &ghUser)
+	err = json.Unmarshal(userBody, &ghUser)
+	if err != nil {
+		log.Println("❌ JSON parse error:", err)
+		c.JSON(500, gin.H{"error": "invalid github response"})
+		return
+	}
+
+	log.Println("👉 Parsed GitHub User:", ghUser.ID, ghUser.Login)
 
 	// 🚨 safety check
 	if ghUser.ID == 0 {
@@ -103,6 +102,9 @@ func GitHubCallback(c *gin.Context) {
 		})
 		return
 	}
+
+	// 🔹 Step 3: Insert into DB
+	log.Println("👉 Inserting user into DB...")
 
 	var userID int
 	err = db.Pool.QueryRow(context.Background(),
@@ -116,10 +118,14 @@ func GitHubCallback(c *gin.Context) {
 	).Scan(&userID)
 
 	if err != nil {
+		log.Println("❌ DB INSERT ERROR:", err)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
+	log.Println("✅ Inserted user ID:", userID)
+
+	// 🔹 Step 4: Response
 	c.JSON(200, gin.H{
 		"user_id":  userID,
 		"username": ghUser.Login,

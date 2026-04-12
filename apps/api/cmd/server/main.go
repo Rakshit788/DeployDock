@@ -20,6 +20,7 @@ func main() {
 	}
 
 	db.InitDB("postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable")
+
 	redis.InitRedis("redis:6379")
 
 	tasks.InitQueue()

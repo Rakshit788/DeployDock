@@ -39,9 +39,9 @@ graph TD
     B -->|Webhook (Future)| D
 ```
 
-- **API Service**: The main entry point for user requests, handling project creation, deployment triggers, and status checks.
-- **Worker Service**: A background job processor that listens for build tasks from the Redis queue, clones the repository, and builds a Docker image.
-- **Deployer Service**: (Future Scope) Intended to manage the routing and serving of deployed applications.
+- **API Service**: The main entry point for user requests, handling OAuth, project creation, deployment triggers, and status checks.
+- **Worker Service**: A background job processor that listens for build tasks from the Redis queue and builds Docker images.
+- **Deployer Service**: Consumes deploy tasks and runs built images as Docker containers.
 - **Nginx**: Acts as a reverse proxy, directing traffic to the appropriate services.
 - **PostgreSQL**: The primary database for storing user, project, and deployment information.
 - **Redis**: Used as a message broker for the asynchronous task queue.
@@ -53,6 +53,36 @@ graph TD
 - **Automated Builds**: Trigger deployments that automatically clone, build, and containerize your application.
 - **Real-time Status**: Monitor the status of your deployments (`pending`, `building`, `deployed`, `failed`).
 - **Custom Subdomains**: Assign unique subdomains to your projects.
+
+## What Is Done So Far (April 13, 2026)
+
+### Implemented
+
+- **GitHub OAuth flow is wired end-to-end**: login redirect, callback, GitHub user fetch, and user upsert into `users` table.
+- **Project creation is implemented**: `POST /create-project` stores projects and generates sanitized fallback subdomains.
+- **Deployment trigger API exists**: `POST /create-deployment` creates a deployment row and enqueues a `build:project` task.
+- **Build worker is implemented**: consumes `build:project`, marks deployment `building`, attempts Docker build, writes logs, marks `built`, and enqueues `deploy:run`.
+- **Deployer worker is implemented**: consumes `deploy:run`, runs Docker container with `VIRTUAL_HOST`, stores runtime info, and marks deployment `deployed`.
+- **Deployment status endpoint exists**: `GET /deployments/:id/status` returns current deployment status.
+- **Database schema is in place**: users, projects, deployments tables and indexes are defined in migration SQL.
+- **Containerized service setup exists**: API, Postgres, Redis, and deployer are wired in Docker Compose.
+
+### Partially Implemented / Known Gaps
+
+- **Worker runtime config mismatch in containers**: worker currently uses `localhost` for Postgres/Redis, which breaks in Docker Compose networking.
+- **Build context bug**: worker calls `docker build` with repo URL directly instead of cloning and building from a local directory.
+- **Deployment URL field reuse**: `deployments.url` is used both for image name and final live URL, which mixes two concerns.
+- **Hardcoded GitHub OAuth credentials**: client ID/secret are currently embedded in source and should move to environment variables.
+- **Migration execution is not automated**: migration SQL exists, but startup does not run migrations.
+- **Nginx config generator is unused**: deployer has `GenerateNginxConfig`, but current setup relies on `nginxproxy/nginx-proxy` via container env.
+- **Some API error handling needs tightening**: deployment creation path has missing early return on bad JSON and an unnecessary panic on enqueue failure.
+
+### Current Service Status Summary
+
+- **API**: Running and handling auth/project/deployment endpoints.
+- **Worker**: Build pipeline logic exists, but runtime/build issues prevent reliable successful builds in current state.
+- **Deployer**: Deployment execution logic exists and is connected to queue, pending upstream build/runtime fixes.
+- **Infra**: Core Compose stack and database schema are present.
 
 ## Tech Stack
 
@@ -114,7 +144,7 @@ For detailed schema, see `packages/db/migrations/0001_init.sql`.
 
 ## Future Scope
 
-- **Dynamic Routing**: Implement the `deployer` service to dynamically route traffic to deployed containers based on subdomains.
+- **Dynamic Routing Improvements**: Finalize robust production routing for deployed containers and domains.
 - **Real-time Logs**: Stream build logs to the client in real-time using WebSockets.
 - **Buildpack Support**: Instead of requiring a `Dockerfile`, use buildpacks to automatically detect the framework and build the application.
 - **Preview Deployments**: Create preview deployments for pull requests.

@@ -47,7 +47,6 @@ func CreateDeployment(c *gin.Context) {
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "queueing task failed"})
 		panic(err)
-		return
 	}
 
 	c.JSON(200, gin.H{

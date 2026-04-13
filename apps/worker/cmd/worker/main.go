@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/Rakshit788/VERCEL-CLONE/apps/worker/internals"
@@ -15,12 +16,15 @@ import (
 func main() {
 	fmt.Println("🚀 VERCEL CLONE WORKER SERVICE STARTING")
 
+	postgresDSN := getenv("WORKER_DB_DSN", "postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable")
+	redisAddr := getenv("REDIS_ADDR", "redis:6379")
+
 	fmt.Println("[1/3] Initializing database connection...")
-	db.InitDB("postgres://postgres:password@localhost:5432/vercel_clone?sslmode=disable")
+	db.InitDB(postgresDSN)
 	fmt.Println("     ✅ Database connected")
 
 	fmt.Println("[2/3] Initializing Redis connection...")
-	redis.InitRedis("localhost:6379")
+	redis.InitRedis(redisAddr)
 	fmt.Println("     ✅ Redis connected")
 
 	fmt.Println("[3/3] Starting health check server on :8081...")
@@ -30,7 +34,14 @@ func main() {
 	fmt.Println("     ✅ Health check server started")
 
 	fmt.Println("🎯 STARTING ASYNQ WORKER...")
-	startAsynqWorker()
+	startAsynqWorker(redisAddr)
+}
+
+func getenv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }
 
 func startHealthCheckServer() {
@@ -48,7 +59,7 @@ func startHealthCheckServer() {
 	}
 }
 
-func startAsynqWorker() {
+func startAsynqWorker(redisAddr string) {
 	defer func() {
 		if r := recover(); r != nil {
 			fmt.Printf("❌ PANIC in startAsynqWorker: %v\n", r)
@@ -58,7 +69,7 @@ func startAsynqWorker() {
 	fmt.Println("🚀 Starting Asynq Worker Server...")
 
 	srv := asynq.NewServer(
-		asynq.RedisClientOpt{Addr: "localhost:6379"},
+		asynq.RedisClientOpt{Addr: redisAddr},
 		asynq.Config{
 			Concurrency: 4,
 		},

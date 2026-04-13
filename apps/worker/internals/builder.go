@@ -149,18 +149,19 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 	defer cancel()
 
 	log(deployID, "DOCKER", "✓ Context timeout set to 10 minutes")
-	logf(deployID, "DOCKER", "↳ Executing: docker build -t %s %s", imageName, project.RepoURL)
-	log(deployID, "DOCKER", "↳ Flags: --no-cache, --progress=plain")
+	logf(deployID, "DOCKER", "↳ Executing: docker buildx build --load -t %s %s", imageName, project.RepoURL)
+	log(deployID, "DOCKER", "↳ Flags: --no-cache --load")
 
 	startTime := time.Now()
 
 	cmd := exec.CommandContext(buildCtx,
-		"docker", "build",
+		"docker", "buildx", "build",
+		"--load",
 		"--no-cache",
-		"--progress=plain", // full layer-by-layer output
 		"-t", imageName,
 		project.RepoURL,
 	)
+	cmd.Env = append(os.Environ(), "DOCKER_BUILDKIT=1")
 
 	// Capture combined stdout+stderr
 	log(deployID, "DOCKER", "⏳ Waiting for docker build to complete...")
@@ -180,8 +181,10 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 	if err != nil {
 		logf(deployID, "DOCKER", "❌ ERROR: Command execution failed")
 		logf(deployID, "DOCKER", "  Error: %v", err)
-		logf(deployID, "DOCKER", "  Process state: %v", cmd.ProcessState)
-		logf(deployID, "DOCKER", "  Exit code: %d", cmd.ProcessState.ExitCode())
+		if cmd.ProcessState != nil {
+			logf(deployID, "DOCKER", "  Process state: %v", cmd.ProcessState)
+			logf(deployID, "DOCKER", "  Exit code: %d", cmd.ProcessState.ExitCode())
+		}
 		log(deployID, "DOCKER", "--- Build output start ---")
 		logf(deployID, "DOCKER", "%s", logs)
 		log(deployID, "DOCKER", "--- Build output end ---")

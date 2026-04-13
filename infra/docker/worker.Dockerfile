@@ -20,6 +20,8 @@ RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o main ./cmd/worker
 FROM alpine:latest
 WORKDIR /app
 
+RUN apk add --no-cache ca-certificates docker-cli docker-cli-buildx git
+
 COPY --from=builder /app/apps/worker/main .
 
 # 🔥 FORCE EXECUTION PERMISSION

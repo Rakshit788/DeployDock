@@ -1,5 +1,5 @@
 
-# Vercel Clone - Self-Hosted Deployment Platform
+# DeployDock - Self-Hosted Deployment Platform
 
 A Go-based, self-hosted deployment platform inspired by Vercel. Deploy web applications from GitHub repositories with automated builds, containerization, and multi-tenant routing.
 
@@ -9,7 +9,7 @@ A Go-based, self-hosted deployment platform inspired by Vercel. Deploy web appli
 ![Redis](https://img.shields.io/badge/Redis-7.2-DC382D?style=for-the-badge&logo=redis)
 ![Nginx](https://img.shields.io/badge/Nginx-Proxy-269539?style=for-the-badge&logo=nginx)
 
-## 📋 Table of Contents
+## Table of Contents
 
 - [Architecture](#architecture)
 - [Features](#features)
@@ -23,7 +23,7 @@ A Go-based, self-hosted deployment platform inspired by Vercel. Deploy web appli
 - [Known Limitations](#known-limitations)
 - [Future Roadmap](#future-roadmap)
 
-## 🏗️ Architecture
+## Architecture
 
 The platform follows a microservices architecture with async task processing:
 
@@ -79,7 +79,7 @@ The platform follows a microservices architecture with async task processing:
 | **PostgreSQL** | 5432 | Data storage (users, projects, deployments) | N/A |
 | **Redis** | 6379 | Task queue broker (asynq) | N/A |
 
-## ✨ Features
+##  Features
 
 ### Implemented 
 - **GitHub OAuth**: Secure user authentication via GitHub
@@ -103,24 +103,24 @@ The platform follows a microservices architecture with async task processing:
 - No webhook support for automatic deployments on push
 - `*.localhost` wildcard hostnames are not universally supported on all OS/browser setups
 
-## 📊 Project Status
+## Project Status
 
 **Last Updated**: April 21, 2026
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Core Deployment Flow | ✅ Working | Full pipeline end-to-end |
-| API Endpoints | ✅ Working | OAuth, projects, deployments |
-| Database Schema | ✅ Ready | Users, projects, deployments tables |
-| Docker Integration | ✅ Working | Builds and runs containers |
-| Async Queue | ✅ Working | Redis + asynq integration |
-| Multi-app Routing | ✅ Working | Nginx-proxy active with VIRTUAL_HOST env vars |
-| Container Port Access | ✅ Disabled by design | Deployed apps are not exposed on host ports |
-| Domain Routing | ✅ Working | Deployments are served through nginx host-based routing |
-| Worker Service | ✅ Working | Builds and enqueues deploy tasks |
-| Deployer Service | ✅ Working | Deploys containers with nginx routing |
+| Core Deployment Flow |  Working | Full pipeline end-to-end |
+| API Endpoints |  Working | OAuth, projects, deployments |
+| Database Schema |  Ready | Users, projects, deployments tables |
+| Docker Integration |  Working | Builds and runs containers |
+| Async Queue |  Working | Redis + asynq integration |
+| Multi-app Routing |  Working | Nginx-proxy active with VIRTUAL_HOST env vars |
+| Container Port Access |  Disabled by design | Deployed apps are not exposed on host ports |
+| Domain Routing |  Working | Deployments are served through nginx host-based routing |
+| Worker Service | Working | Builds and enqueues deploy tasks |
+| Deployer Service |  Working | Deploys containers with nginx routing |
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 **Backend**
 - Language: Go 1.26
@@ -141,7 +141,7 @@ The platform follows a microservices architecture with async task processing:
 - Build Tool: go build (no external build system)
 - Testing: (not yet implemented)
 
-## 🚀 Getting Started
+##  Getting Started
 
 ### Prerequisites
 
@@ -228,7 +228,7 @@ The platform follows a microservices architecture with async task processing:
    curl http://localhost:8080/deployments/1/status
    ```
 
-## 📡 API Endpoints
+##  API Endpoints
 
 ### Authentication
 - `GET /auth/github/login` - Redirect to GitHub OAuth
@@ -266,7 +266,7 @@ The platform follows a microservices architecture with async task processing:
 - `GET /health` - API health check
 - `GET :8081/health` - Worker health check (internal port)
 
-## 🗄️ Database Schema
+##  Database Schema
 
 ### users
 ```sql
@@ -304,7 +304,7 @@ finished_at | TIMESTAMP
 created_at  | TIMESTAMP
 ```
 
-## 📁 Project Structure
+##  Project Structure
 
 ```
 vercel-clone/
@@ -343,7 +343,7 @@ vercel-clone/
 └── README.md                   # This file
 ```
 
-## 🔄 Deployment Workflow
+##  Deployment Workflow
 
 ### Step-by-Step Flow
 
@@ -380,12 +380,12 @@ vercel-clone/
 ### Status Transitions
 
 ```
-pending → building → built → deploying → deployed ✅
+pending → building → built → deploying → deployed 
    ↓         ↓        ↓         ↓          
  failed   failed    failed    failed    ← Any error state
 ```
 
-## ⚠️ Known Limitations
+##  Known Limitations
 1. **Local wildcard DNS behavior varies by OS/browser**
    - nginx-proxy routes correctly using `VIRTUAL_HOST`
    - Default suffix is `localhost`
@@ -406,45 +406,6 @@ pending → building → built → deploying → deployed ✅
 - API returns 200 on JSON bind errors (missing early return)
 - Worker panic on queue enqueue failure (should retry gracefully)
 - No automatic database migrations on startup
-- GitHub OAuth secrets hardcoded in source
 - No input validation on endpoints
 
-### Low Priority
-- `packages/config/` and `packages/cache/` are empty/unused
-- Nginx config generator (`nginx.go`) is dead code
-- No rate limiting on API
-- No request logging
-- No metrics/monitoring
 
-## 🗺️ Future Roadmap
-
-### Phase 1: Core Fixes (High Priority)
-- [ ] Move hardcoded secrets to environment variables
-- [ ] Fix worker localhost → service name connections
-- [ ] Implement proper git clone before Docker build
-- [ ] Add database migration runner on startup
-- [ ] Better error handling in API handlers
-
-### Phase 2: Features (Medium Priority)
-- [ ] GitHub webhooks for automatic deployments on push
-- [ ] Deployment rollback functionality
-- [ ] Build logs streaming via WebSockets
-- [ ] Environment variables per project
-- [ ] Custom build commands per project
-- [ ] Project listing/retrieval endpoints
-
-### Phase 3: Production Ready (Lower Priority)
-- [ ] SSL/TLS certificate management (Let's Encrypt)
-- [ ] Multi-user project permissions
-- [ ] Deployment history and analytics
-- [ ] Docker Compose file generation
-- [ ] Buildpack support (auto-detect framework)
-- [ ] Pull request preview deployments
-- [ ] Horizontal scaling (multiple deployer instances)
-
-### Phase 4: Polish
-- [ ] Frontend dashboard UI
-- [ ] CLI tool
-- [ ] Comprehensive testing
-- [ ] API documentation (OpenAPI/Swagger)
-- [ ] Monitoring and alerting

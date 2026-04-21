@@ -7,7 +7,7 @@ import { getStoredToken } from '@/lib/auth'
 import { useRouter } from 'next/navigation'
 
 interface Project {
-  id: string
+  id: number
   name: string
   repo_url: string
   created_at: string
@@ -32,8 +32,9 @@ export default function Projects() {
 
   const fetchData = async () => {
     try {
+      const userId = Number(localStorage.getItem('user_id') || '0')
       const [projectsData, userData] = await Promise.all([
-        apiClient.listProjects(),
+        apiClient.listProjects(userId || undefined),
         apiClient.getUser().catch(() => null)
       ])
       setProjects(projectsData || [])
@@ -51,22 +52,26 @@ export default function Projects() {
 
     setSubmitting(true)
     try {
-      const newProject = await apiClient.createProject(repoUrl)
-      setProjects([newProject, ...projects])
+      const userId = Number(localStorage.getItem('user_id') || '0')
+      const result = await apiClient.createProject(repoUrl, undefined, userId || undefined)
+      if (!result?.project_id) {
+        throw new Error('Project creation response missing project_id')
+      }
+      await fetchData()
       setRepoUrl('')
       alert('Project created successfully!')
     } catch (error: any) {
       console.error('Error creating project:', error)
-      alert(error.response?.data?.message || 'Failed to create project')
+      alert(error.response?.data?.details || error.response?.data?.error || error.message || 'Failed to create project')
     } finally {
       setSubmitting(false)
     }
   }
 
-  const handleDeploy = async (projectId: string) => {
+  const handleDeploy = async (projectId: number) => {
     try {
       const deployment = await apiClient.createDeployment(projectId)
-      alert(`Deployment started! ID: ${deployment.id}`)
+      alert(`Deployment started! ID: ${deployment.DEPLOYMENT_ID || deployment.deployment_id || 'pending'}`)
       // Refresh deployments
       router.push('/dashboard')
     } catch (error: any) {

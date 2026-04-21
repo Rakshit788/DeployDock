@@ -3,6 +3,11 @@ export const GITHUB_CLIENT_ID = process.env.NEXT_PUBLIC_GITHUB_CLIENT_ID || ''
 export const GITHUB_REDIRECT_URI = `${typeof window !== 'undefined' ? window.location.origin : ''}/auth/callback`
 
 export const getGitHubAuthUrl = () => {
+  // Prefer backend OAuth entrypoint to avoid frontend env desync issues.
+  if (API_URL) {
+    return `${API_URL}/auth/github/login`
+  }
+
   const params = new URLSearchParams({
     client_id: GITHUB_CLIENT_ID,
     redirect_uri: GITHUB_REDIRECT_URI,
@@ -22,7 +27,18 @@ export const saveToken = (token: string) => {
   localStorage.setItem('auth_token', token)
 }
 
+export const getGitHubToken = () => {
+  if (typeof window === 'undefined') return null
+  return localStorage.getItem('github_token')
+}
+
+export const saveGitHubToken = (token: string) => {
+  if (typeof window === 'undefined') return
+  localStorage.setItem('github_token', token)
+}
+
 export const clearToken = () => {
   if (typeof window === 'undefined') return
   localStorage.removeItem('auth_token')
+  localStorage.removeItem('github_token')
 }

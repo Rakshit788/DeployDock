@@ -66,7 +66,7 @@ The platform follows a microservices architecture with async task processing:
 4. **Deployer** → Dequeue `deploy:run` → Run container with `VIRTUAL_HOST` env
 5. **nginx-proxy** → Detects `VIRTUAL_HOST` → Routes requests to container
 6. **Container** → Serves application on port 3000 (internal)
-7. **User** → Access via direct port OR domain (if DNS configured)
+7. **User** → Access deployment via nginx host-based URL
 
 ### Services
 
@@ -101,11 +101,11 @@ The platform follows a microservices architecture with async task processing:
 - No automatic database migrations on startup
 - Docker builds from Git URLs require git in engine (or use local clone)
 - No webhook support for automatic deployments on push
-- Windows DNS doesn't resolve nip.io domains without external tools
+- `*.localhost` wildcard hostnames are not universally supported on all OS/browser setups
 
 ## 📊 Project Status
 
-**Last Updated**: April 13, 2026
+**Last Updated**: April 21, 2026
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -115,8 +115,8 @@ The platform follows a microservices architecture with async task processing:
 | Docker Integration | ✅ Working | Builds and runs containers |
 | Async Queue | ✅ Working | Redis + asynq integration |
 | Multi-app Routing | ✅ Working | Nginx-proxy active with VIRTUAL_HOST env vars |
-| Container Port Access | ✅ Working | Direct access via 127.0.0.1:random_port |
-| Domain Routing | ⚠️ Partial | Nginx routes correctly, Windows DNS lacks nip.io support |
+| Container Port Access | ✅ Disabled by design | Deployed apps are not exposed on host ports |
+| Domain Routing | ✅ Working | Deployments are served through nginx host-based routing |
 | Worker Service | ✅ Working | Builds and enqueues deploy tasks |
 | Deployer Service | ✅ Working | Deploys containers with nginx routing |
 
@@ -170,8 +170,8 @@ The platform follows a microservices architecture with async task processing:
    GITHUB_CLIENT_ID=your_github_client_id
    GITHUB_CLIENT_SECRET=your_github_client_secret
    
-   # Optional: custom domain suffix for deployed apps (default: 127.0.0.1)
-   BASE_DOMAIN_SUFFIX=127.0.0.1
+   # Optional: custom domain suffix for deployed apps (default: localhost)
+   BASE_DOMAIN_SUFFIX=localhost
    ```
 
 3. **Start services**
@@ -361,17 +361,20 @@ vercel-clone/
    - Enqueues `deploy:run` task
 
 3. **Deployer picks up deploy task**
-   - Sets status → `deploying`.{domain} -e VIRTUAL_PORT=3000 {image}`
-     - **Important**: Sets VIRTUAL_HOST env var so nginx-proxy recognizes the container
-   - Gets random port (3000-9000) and maps it locally
-   - Stores container ID and port
+   - Sets status → `deploying`
+   - Runs container on the internal Docker network with:
+     - `VIRTUAL_HOST={subdomain}.{BASE_DOMAIN_SUFFIX}`
+     - `VIRTUAL_PORT=3000`
+   - Does **not** publish host ports (`-p` removed)
+   - Stores container ID
    - nginx-proxy automatically detects VIRTUAL_HOST and creates routing rules
    - Sets status → `deployed`
    - Updates `deployments.url` to live URL
 
-4. **User accesses deployment** (two ways)
-   - **Direct port**: `http://127.0.0.1:{random_port}` (always works)
-   - Direct URL: `http://127.0.0.1:{random_port}`
+4. **User accesses deployment**
+   - URL format: `http://{subdomain}.{BASE_DOMAIN_SUFFIX}`
+   - Example with defaults: `http://my-app.localhost`
+   - If nginx is down, deployment URLs are unavailable (expected)
 
 
 ### Status Transitions
@@ -383,11 +386,10 @@ pending → building → built → deploying → deployed ✅
 ```
 
 ## ⚠️ Known Limitations
-Nginx-proxy domain resolution on Windows**
-   - nginx-proxy IS active and routes correctly via VIRTUAL_HOST
-   - Problem: Windows DNS can't resolve `*.127.0.0.1.nip.io` domains
-   - Workaround: Use direct port access `127.0.0.1:port` or add hosts file entry
-   - Fix: Use xip.io instead of nip.io, or configure custom domain with hosts entry
+1. **Local wildcard DNS behavior varies by OS/browser**
+   - nginx-proxy routes correctly using `VIRTUAL_HOST`
+   - Default suffix is `localhost`
+   - If `subdomain.localhost` does not resolve in your environment, use a custom suffix and hosts/DNS mapping
 
 2. **Docker builds from Git URLs**
    - Worker runs `docker build -t {image} {git_url}` directly
@@ -399,7 +401,6 @@ Nginx-proxy domain resolution on Windows**
    - Some hardcoded values scattered in handler logs and error messages
    - Compose env vars override these at runtime, so not critical
    - Requires local DNS or hosts file entry for `{subdomain}.{domain}`
-   - Current workaround: Use direct port URLs (`127.0.0.1:port`)
 
 ### Medium Severity
 - API returns 200 on JSON bind errors (missing early return)
@@ -447,72 +448,3 @@ Nginx-proxy domain resolution on Windows**
 - [ ] Comprehensive testing
 - [ ] API documentation (OpenAPI/Swagger)
 - [ ] Monitoring and alerting
-
-## Tech Stack
-
-- **Backend**: Go
-- **Framework**: Gin (for the API service)
-- **Database**: PostgreSQL with `pgx`
-- **Task Queue**: `asynq` (built on Redis)
-- **Containerization**: Docker & Docker Compose
-- **Reverse Proxy**: Nginx
-
-## Getting Started
-
-### Prerequisites
-
-- Docker and Docker Compose
-- Go (version 1.21 or higher)
-- A GitHub account and an OAuth application
-
-### Installation
-
-1.  **Clone the repository:**
-    ```bash
-    git clone https://github.com/your-username/vercel-clone.git
-    cd vercel-clone
-    ```
-
-2.  **Set up environment variables:**
-
-    Create a `.env` file in the root directory and add your GitHub OAuth credentials:
-    ```env
-    GITHUB_CLIENT_ID=your_github_client_id
-    GITHUB_CLIENT_SECRET=your_github_client_secret
-    ```
-
-3.  **Run the application:**
-    ```bash
-    docker-compose up --build
-    ```
-    This will start all the services. The API will be available at `http://localhost`.
-
-## API Endpoints
-
-- `GET /health`: Health check.
-- `GET /auth/github/login`: Redirect to GitHub for OAuth login.
-- `GET /auth/github/callback`: Callback URL for GitHub OAuth.
-- `POST /create-project`: Create a new project.
-- `POST /create-deployment`: Trigger a new deployment for a project.
-- `GET /deployments/:id/status`: Get the status of a specific deployment.
-
-## Database Schema
-
-The database consists of three main tables: `users`, `projects`, and `deployments`.
-
-- **users**: Stores user information from GitHub.
-- **projects**: Contains details about user projects, including repository URL and build settings.
-- **deployments**: Tracks the status and logs of each deployment.
-
-For detailed schema, see `packages/db/migrations/0001_init.sql`.
-
-## Future Scope
-
-- **Dynamic Routing Improvements**: Finalize robust production routing for deployed containers and domains.
-- **Real-time Logs**: Stream build logs to the client in real-time using WebSockets.
-- **Buildpack Support**: Instead of requiring a `Dockerfile`, use buildpacks to automatically detect the framework and build the application.
-- **Preview Deployments**: Create preview deployments for pull requests.
-
----
-
-*This README was generated with the help of GitHub Copilot.*

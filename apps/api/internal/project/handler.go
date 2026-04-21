@@ -11,11 +11,13 @@ import (
 )
 
 type Project struct {
+	ID        int64   `json:"id"`
 	UserID    int64   `json:"user_id"`
 	Name      string  `json:"name"`
 	RepoURL   string  `json:"repo_url"`
 	Framework *string `json:"framework"`
 	Subdomain *string `json:"subdomain"`
+	CreatedAt string  `json:"created_at"`
 }
 
 func CreateProject(c *gin.Context) {
@@ -43,7 +45,7 @@ func CreateProject(c *gin.Context) {
 	).Scan(&projectid)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "db insert failed"})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db insert failed", "details": err.Error()})
 		return
 	}
 
@@ -86,4 +88,43 @@ func sanitizeSubdomain(input string) string {
 		return "project"
 	}
 	return s
+}
+
+func ListProjects(c *gin.Context) {
+	// TODO: Extract user_id from JWT token
+	// For now, get it from query param
+	userIDParam := c.Query("user_id")
+	if userIDParam == "" {
+		userIDParam = "1" // Default for testing
+	}
+
+	rows, err := db.Pool.Query(
+		c.Request.Context(),
+		`SELECT id, user_id, name, repo_url, framework, subdomain, created_at
+		 FROM projects
+		 WHERE user_id = $1
+		 ORDER BY created_at DESC`,
+		userIDParam,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db query failed"})
+		return
+	}
+	defer rows.Close()
+
+	var projects []Project
+	for rows.Next() {
+		var p Project
+		err := rows.Scan(&p.ID, &p.UserID, &p.Name, &p.RepoURL, &p.Framework, &p.Subdomain, &p.CreatedAt)
+		if err != nil {
+			continue
+		}
+		projects = append(projects, p)
+	}
+
+	if projects == nil {
+		projects = []Project{}
+	}
+
+	c.JSON(http.StatusOK, projects)
 }

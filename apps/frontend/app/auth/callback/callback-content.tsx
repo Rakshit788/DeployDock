@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { apiClient } from '@/lib/api'
-import { saveToken } from '@/lib/auth'
+import { saveToken, saveGitHubToken } from '@/lib/auth'
 
 export default function CallbackContent() {
   const router = useRouter()
@@ -26,8 +26,20 @@ export default function CallbackContent() {
         // Exchange code for token with backend
         const response = await apiClient.githubAuth(code)
 
-        if (response.token) {
-          saveToken(response.token)
+        if (response) {
+          // Save authentication token (JWT or session token from API)
+          if (response.token) {
+            saveToken(response.token)
+          }
+          // Save GitHub access token if provided
+          if (response.github_token) {
+            saveGitHubToken(response.github_token)
+          }
+          // Also save user info for quick access
+          if (response.user_id) {
+            localStorage.setItem('user_id', String(response.user_id))
+            localStorage.setItem('username', response.username || '')
+          }
           // Redirect to dashboard
           router.push('/dashboard')
         } else {

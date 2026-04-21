@@ -28,9 +28,8 @@ type DeployPayload struct {
 }
 
 func HandleDeploy(ctx context.Context, t *asynq.Task) error {
-	
-	log(0, "DEPLOY", "HandleDeploy task received")
 
+	log(0, "DEPLOY", "HandleDeploy task received")
 
 	var payload DeployPayload
 	if err := json.Unmarshal(t.Payload(), &payload); err != nil {
@@ -43,7 +42,7 @@ func HandleDeploy(ctx context.Context, t *asynq.Task) error {
 	logf(dID, "START", "HandleDeploy entered")
 	logf(dID, "START", "DeploymentID=%d", dID)
 
-	// 1. Mark as "deploying" 
+	// 1. Mark as "deploying"
 	log(dID, "DB", "updating status → deploying")
 	if err := updateDeploymentStatus(dID, "deploying", ""); err != nil {
 		logf(dID, "DB", " ERROR: failed to set status=deploying: %v", err)
@@ -51,7 +50,7 @@ func HandleDeploy(ctx context.Context, t *asynq.Task) error {
 	}
 	log(dID, "DB", "status=deploying")
 
-	//  2. Fetch deployment details 
+	//  2. Fetch deployment details
 	logf(dID, "DB", "fetching deployment details for deploymentID=%d", dID)
 	details, err := getDeploymentDetails(dID)
 	if err != nil {
@@ -76,7 +75,7 @@ func HandleDeploy(ctx context.Context, t *asynq.Task) error {
 	// 3. Run Docker container
 	log(dID, "DOCKER", "starting Docker container…")
 	startTime := time.Now()
-	port, containerID, err := runContainer(details.ImageURL, details.Subdomain)
+	containerID, err := runContainer(details.ImageURL, details.Subdomain)
 	duration := time.Since(startTime)
 
 	if err != nil {
@@ -87,32 +86,30 @@ func HandleDeploy(ctx context.Context, t *asynq.Task) error {
 	}
 
 	logf(dID, "DOCKER", " Container started successfully")
-	logf(dID, "DOCKER", "Port: %d", port)
 
-
-	//  4. Save container info 
+	//  4. Save container info
 	log(dID, "DB", "saving container info…")
-	if err := saveContainerInfo(dID, containerID, port); err != nil {
+	if err := saveContainerInfo(dID, containerID); err != nil {
 		logf(dID, "DB", "ERROR: failed to save container info: %v", err)
 		return fmt.Errorf("failed to save container info: %w", err)
 	}
 	log(dID, "DB", " Container info saved")
 
 	host := deploymentHost(details.Subdomain)
-	liveURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	liveURL := fmt.Sprintf("http://%s", host)
 	logf(dID, "DB", "updating live URL → %s", liveURL)
 	if err := updateDeploymentURL(dID, liveURL); err != nil {
 		logf(dID, "DB", "WARNING: failed to update live URL: %v", err)
 	}
 
-	//  5. Mark as "deployed" 
+	//  5. Mark as "deployed"
 	log(dID, "DB", "updating status → deployed")
 	if err := updateDeploymentStatus(dID, "deployed", ""); err != nil {
 		logf(dID, "DB", "  WARNING: failed to update status to deployed: %v", err)
-	} 
+	}
 
-	logf(dID, "SUCCESS", " Deployment %d is live at %s (direct) and http://%s (via nginx-proxy)", dID, liveURL, host)
-	
+	logf(dID, "SUCCESS", " Deployment %d is live at %s (via nginx-proxy)", dID, liveURL)
+
 	return nil
 
 }
@@ -140,8 +137,8 @@ func updateDeploymentStatus(deployID int64, status string, logs string) error {
 	return nil
 }
 
-func saveContainerInfo(deployID int64, containerID string, port int) error {
-	logf(deployID, "DB", "saveContainerInfo → containerID=%s  port=%d", containerID, port)
+func saveContainerInfo(deployID int64, containerID string) error {
+	logf(deployID, "DB", "saveContainerInfo → containerID=%s", containerID)
 
 	if db.Pool == nil {
 		logf(deployID, "DB", " ERROR: db.Pool is nil!")
@@ -153,7 +150,7 @@ func saveContainerInfo(deployID int64, containerID string, port int) error {
 		`UPDATE deployments
 		 SET logs = COALESCE(logs, '') || $1
 		 WHERE id = $2`,
-		fmt.Sprintf("\ncontainer_id=%s port=%d", containerID, port), deployID,
+		fmt.Sprintf("\ncontainer_id=%s", containerID), deployID,
 	)
 
 	if err != nil {

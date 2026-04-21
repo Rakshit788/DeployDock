@@ -16,6 +16,16 @@ type deployment struct {
 	ProjectId int64 `json:"project_id"`
 }
 
+type Deployment struct {
+	ID        int64  `json:"id"`
+	ProjectID int64  `json:"project_id"`
+	Status    string `json:"status"`
+	URL       string `json:"url"`
+	CommitSha string `json:"commit_sha"`
+	Logs      string `json:"logs"`
+	CreatedAt string `json:"created_at"`
+}
+
 func CreateDeployment(c *gin.Context) {
 
 	var body deployment
@@ -82,4 +92,37 @@ func GetDeploymentStatus(c *gin.Context) {
 		"status":        status,
 	})
 
+}
+
+func ListDeployments(c *gin.Context) {
+	// TODO: Extract from JWT token
+	rows, err := db.Pool.Query(
+		c.Request.Context(),
+		`SELECT d.id, d.project_id, d.status, d.url, d.commit_sha, d.logs, d.created_at
+		 FROM deployments d
+		 JOIN projects p ON d.project_id = p.id
+		 ORDER BY d.created_at DESC
+		 LIMIT 100`,
+	)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "db query failed"})
+		return
+	}
+	defer rows.Close()
+
+	var deployments []Deployment
+	for rows.Next() {
+		var d Deployment
+		err := rows.Scan(&d.ID, &d.ProjectID, &d.Status, &d.URL, &d.CommitSha, &d.Logs, &d.CreatedAt)
+		if err != nil {
+			continue
+		}
+		deployments = append(deployments, d)
+	}
+
+	if deployments == nil {
+		deployments = []Deployment{}
+	}
+
+	c.JSON(http.StatusOK, deployments)
 }

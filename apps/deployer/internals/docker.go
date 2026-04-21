@@ -3,7 +3,6 @@ package internals
 import (
 	"context"
 	"fmt"
-	"math/rand"
 	"os"
 	"os/exec"
 	"strings"
@@ -19,7 +18,7 @@ type DeploymentDetails struct {
 func deploymentHost(subdomain string) string {
 	domainSuffix := strings.TrimSpace(os.Getenv("BASE_DOMAIN_SUFFIX"))
 	if domainSuffix == "" {
-		domainSuffix = "127.0.0.1.nip.io"
+		domainSuffix = "localhost"
 	}
 
 	return fmt.Sprintf("%s.%s", subdomain, domainSuffix)
@@ -40,12 +39,9 @@ func getDeploymentDetails(deployID int64) (*DeploymentDetails, error) {
 	return &d, nil
 }
 
-// runContainer starts the Docker container on a random available port
-// returns (hostPort, containerID, error)
-func runContainer(imageName string, subdomain string) (int, string, error) {
+// runContainer starts a Docker container discoverable by nginx-proxy via VIRTUAL_HOST.
+func runContainer(imageName string, subdomain string) (string, error) {
 	host := deploymentHost(subdomain)
-
-	port := rand.Intn(6000) + 3000
 	deployID := int64(0)
 
 	// Get network from env OR fallback
@@ -57,16 +53,15 @@ func runContainer(imageName string, subdomain string) (int, string, error) {
 	logf(deployID, "DOCKER", " Starting container deployment")
 	logf(deployID, "DOCKER", "Host: %s", host)
 	logf(deployID, "DOCKER", "Network: %s", network)
-	logf(deployID, "DOCKER", "Port: %d → 3000", port)
+	logf(deployID, "DOCKER", "Mode: nginx-only (no host port mapping)")
 
 	cmd := exec.Command(
 		"docker", "run",
 		"-d",
 		"--network", network,
+		"--label", "com.vercel-clone.managed=true",
 		"-e", fmt.Sprintf("VIRTUAL_HOST=%s", host),
 		"-e", "VIRTUAL_PORT=3000",
-		"-p", fmt.Sprintf("%d:3000", port),
-		"--restart", "unless-stopped",
 		imageName,
 	)
 
@@ -75,7 +70,7 @@ func runContainer(imageName string, subdomain string) (int, string, error) {
 	if err != nil {
 		logf(deployID, "DOCKER", " ERROR: %v", err)
 		logf(deployID, "DOCKER", "Output: %s", string(output))
-		return 0, "", fmt.Errorf("docker run failed: %s - %w", string(output), err)
+		return "", fmt.Errorf("docker run failed: %s - %w", string(output), err)
 	}
 
 	containerID := strings.TrimSpace(string(output))
@@ -83,7 +78,7 @@ func runContainer(imageName string, subdomain string) (int, string, error) {
 	logf(deployID, "DOCKER", " Container started")
 	logf(deployID, "DOCKER", "Container ID: %s", containerID)
 
-	return port, containerID, nil
+	return containerID, nil
 }
 func getDeploymentFromDB(deployID int64, d *DeploymentDetails) error {
 	logf(deployID, "DB", "SELECT url(as image), subdomain FROM deployments JOIN projects…")

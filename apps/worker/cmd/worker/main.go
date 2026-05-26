@@ -14,26 +14,26 @@ import (
 )
 
 func main() {
-	fmt.Println("🚀 VERCEL CLONE WORKER SERVICE STARTING")
+	fmt.Println(" Deploy Dock WORKER SERVICE STARTING")
 
 	postgresDSN := getenv("WORKER_DB_DSN", "postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable")
 	redisAddr := getenv("REDIS_ADDR", "redis:6379")
 
 	fmt.Println("[1/3] Initializing database connection...")
 	db.InitDB(postgresDSN)
-	fmt.Println("     ✅ Database connected")
+	fmt.Println(" Database connected")
 
 	fmt.Println("[2/3] Initializing Redis connection...")
 	redis.InitRedis(redisAddr)
-	fmt.Println("     ✅ Redis connected")
+	fmt.Println(" Redis connected")
 
 	fmt.Println("[3/3] Starting health check server on :8081...")
 	go startHealthCheckServer()
 
 	time.Sleep(1 * time.Second)
-	fmt.Println("     ✅ Health check server started")
+	fmt.Println(" Health check server started")
 
-	fmt.Println("🎯 STARTING ASYNQ WORKER...")
+	fmt.Println(" STARTING ASYNQ WORKER...")
 	startAsynqWorker(redisAddr)
 }
 
@@ -55,18 +55,18 @@ func startHealthCheckServer() {
 	})
 
 	if err := r.Run(":8081"); err != nil {
-		log.Printf("❌ Health server error: %v", err)
+		log.Printf(" Health server error: %v", err)
 	}
 }
 
 func startAsynqWorker(redisAddr string) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("❌ PANIC in startAsynqWorker: %v\n", r)
+			fmt.Printf("   PANIC in startAsynqWorker: %v\n", r)
 		}
 	}()
 
-	fmt.Println("🚀 Starting Asynq Worker Server...")
+	fmt.Println(" Starting Asynq Worker Server...")
 
 	srv := asynq.NewServer(
 		asynq.RedisClientOpt{Addr: redisAddr},
@@ -78,11 +78,11 @@ func startAsynqWorker(redisAddr string) {
 	mux := asynq.NewServeMux()
 	mux.HandleFunc("build:project", internals.HandleBuild)
 
-	fmt.Println("📋 Registered task handler: build:project")
-	fmt.Println("⏳ Waiting for tasks from Redis queue...")
+	fmt.Println(" Registered task handler: build:project")
+	fmt.Println(" Waiting for tasks from Redis queue...")
 	fmt.Println("   Concurrency: 4 workers")
 
 	if err := srv.Run(mux); err != nil {
-		log.Fatalf("❌ Worker error: %v", err)
+		log.Fatalf(" Worker error: %v", err)
 	}
 }

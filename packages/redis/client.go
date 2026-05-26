@@ -19,8 +19,8 @@ func InitRedis(addr string) {
 	// test connection
 	_, err := RDB.Ping(Ctx).Result()
 	if err != nil {
-		log.Fatal("❌ Redis not reachable:", err)
+		log.Fatal(" Redis not reachable:", err)
 	}
 
-	log.Println("✅ Redis connected")
+	log.Println(" Redis connected")
 }

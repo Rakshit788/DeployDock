@@ -43,7 +43,7 @@ func main() {
 		c.JSON(200, gin.H{"status": "ok"})
 	})
 
-	// 🔥 auth routes
+	// auth routes
 	r.GET("/auth/github/login", auth.GitHubLogin)
 	r.GET("/auth/github/callback", auth.GitHubCallback)
 	r.POST("/api/auth/github", auth.GitHubAuthAPI)

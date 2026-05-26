@@ -48,10 +48,10 @@ func logf(deployID int64, step, format string, args ...interface{}) {
 // ─────────────────────────────────────────────
 
 func HandleBuild(ctx context.Context, t *asynq.Task) error {
-	fmt.Println("🔨 Build started")
+	fmt.Println(" Build started")
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Printf("❌ PANIC in HandleBuild: %v\n", r)
+			fmt.Printf(" PANIC in HandleBuild: %v\n", r)
 		}
 	}()
 
@@ -69,11 +69,12 @@ func HandleBuild(ctx context.Context, t *asynq.Task) error {
 
 	// ── 1. Mark as "building" ────────────────────────────────────────────────
 	log(dID, "DB", "updating status → building")
+
 	if err := updateDeploymentStatus(dID, "building", "", ""); err != nil {
 		logf(dID, "DB", "ERROR: failed to set status=building: %v", err)
 		return fmt.Errorf("failed to update status to building: %w", err)
 	}
-	log(dID, "DB", "status=building  ✓")
+	log(dID, "DB", "status=building  ")
 
 	// ── 2. Fetch project details ─────────────────────────────────────────────
 	logf(dID, "DB", "fetching project details for projectID=%d", payload.ProjectID)
@@ -107,7 +108,7 @@ func HandleBuild(ctx context.Context, t *asynq.Task) error {
 		logf(dID, "DB", "ERROR: failed to set status=built: %v", err)
 		return fmt.Errorf("failed to update status to built: %w", err)
 	}
-	log(dID, "DB", "status=built  ✓")
+	log(dID, "DB", "status=built  ")
 
 	// ── 5. Enqueue deploy task ───────────────────────────────────────────────
 	log(dID, "ENQUEUE", "enqueueing deploy:run task …")
@@ -134,12 +135,12 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 	imageTag := fmt.Sprintf("%d", time.Now().Unix())
 	imageName := fmt.Sprintf("deploy-%d:%s", deployID, imageTag)
 
-	logf(deployID, "DOCKER", "✓ Generated image tag: %q", imageName)
-	logf(deployID, "DOCKER", "✓ Repository URL: %q", project.RepoURL)
+	logf(deployID, "DOCKER", "Generated image tag: %q", imageName)
+	logf(deployID, "DOCKER", " Repository URL: %q", project.RepoURL)
 
 	// Guard: make sure repoURL is not empty
 	if project.RepoURL == "" {
-		log(deployID, "DOCKER", "❌ ERROR: project.RepoURL is empty")
+		log(deployID, "DOCKER", " ERROR: project.RepoURL is empty")
 		return "", "", fmt.Errorf("project.RepoURL is empty — cannot build Docker image")
 	}
 	log(deployID, "DOCKER", "✓ RepoURL validation passed")
@@ -148,7 +149,7 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 	buildCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()
 
-	log(deployID, "DOCKER", "✓ Context timeout set to 10 minutes")
+	log(deployID, "DOCKER", " Context timeout set to 10 minutes")
 	logf(deployID, "DOCKER", "↳ Executing: docker buildx build --load -t %s %s", imageName, project.RepoURL)
 	log(deployID, "DOCKER", "↳ Flags: --no-cache --load")
 
@@ -173,13 +174,13 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 	logf(deployID, "DOCKER", "↳ Output length: %d bytes", len(logs))
 
 	if buildCtx.Err() == context.DeadlineExceeded {
-		log(deployID, "DOCKER", "❌ ERROR: Build timed out after 10 minutes")
-		logf(deployID, "DOCKER", "❌ Context error: %v", buildCtx.Err())
+		log(deployID, "DOCKER", " ERROR: Build timed out after 10 minutes")
+		logf(deployID, "DOCKER", " Context error: %v", buildCtx.Err())
 		return "", logs, fmt.Errorf("docker build timed out after 10 minutes")
 	}
 
 	if err != nil {
-		logf(deployID, "DOCKER", "❌ ERROR: Command execution failed")
+		logf(deployID, "DOCKER", " ERROR: Command execution failed")
 		logf(deployID, "DOCKER", "  Error: %v", err)
 		if cmd.ProcessState != nil {
 			logf(deployID, "DOCKER", "  Process state: %v", cmd.ProcessState)
@@ -191,9 +192,9 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 		return "", logs, err
 	}
 
-	log(deployID, "DOCKER", "✅ Docker build completed successfully!")
-	logf(deployID, "DOCKER", "✅ Image name: %s", imageName)
-	logf(deployID, "DOCKER", "✅ Total build time: %v", buildDuration)
+	log(deployID, "DOCKER", " Docker build completed successfully!")
+	logf(deployID, "DOCKER", " Image name: %s", imageName)
+	logf(deployID, "DOCKER", " Total build time: %v", buildDuration)
 	log(deployID, "DOCKER", "--- Build output start ---")
 	logf(deployID, "DOCKER", "%s", logs)
 	log(deployID, "DOCKER", "--- Build output end ---")

@@ -42,7 +42,7 @@ func GitHubLogin(c *gin.Context) {
 
 func GitHubCallback(c *gin.Context) {
 	code := c.Query("code")
-	log.Println("👉 callback code:", code)
+	log.Println(" callback code:", code)
 
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
 	if clientID == "" {
@@ -65,19 +65,19 @@ func GitHubCallback(c *gin.Context) {
 		form,
 	)
 	if err != nil {
-		log.Println("❌ Token request failed:", err)
+		log.Println("Token request failed:", err)
 		c.JSON(500, gin.H{"error": "token request failed"})
 		return
 	}
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	log.Println("👉 token response:", string(respBody))
+	log.Println(" token response:", string(respBody))
 
 	values, _ := url.ParseQuery(string(respBody))
 	accessToken := values.Get("access_token")
 
-	log.Println("👉 parsed token:", accessToken)
+	log.Println(" parsed token:", accessToken)
 
 	if accessToken == "" {
 		c.JSON(500, gin.H{
@@ -95,26 +95,26 @@ func GitHubCallback(c *gin.Context) {
 	client := &http.Client{}
 	userResp, err := client.Do(userReq)
 	if err != nil {
-		log.Println("❌ GitHub user fetch failed:", err)
+		log.Println(" GitHub user fetch failed:", err)
 		c.JSON(500, gin.H{"error": "user fetch failed"})
 		return
 	}
 	defer userResp.Body.Close()
 
 	userBody, _ := io.ReadAll(userResp.Body)
-	log.Println("👉 GitHub raw user:", string(userBody))
+	log.Println(" GitHub raw user:", string(userBody))
 
 	var ghUser GitHubUser
 	err = json.Unmarshal(userBody, &ghUser)
 	if err != nil {
-		log.Println("❌ JSON parse error:", err)
+		log.Println(" JSON parse error:", err)
 		c.JSON(500, gin.H{"error": "invalid github response"})
 		return
 	}
 
-	log.Println("👉 Parsed GitHub User:", ghUser.ID, ghUser.Login)
+	log.Println("Parsed GitHub User:", ghUser.ID, ghUser.Login)
 
-	// 🚨 safety check
+	//  safety check
 	if ghUser.ID == 0 {
 		c.JSON(500, gin.H{
 			"error": "invalid github user",
@@ -123,8 +123,8 @@ func GitHubCallback(c *gin.Context) {
 		return
 	}
 
-	// 🔹 Step 3: Insert into DB
-	log.Println("👉 Inserting user into DB...")
+	//  Step 3: Insert into DB
+	log.Println(" Inserting user into DB...")
 
 	var userID int
 	err = db.Pool.QueryRow(context.Background(),
@@ -138,21 +138,21 @@ func GitHubCallback(c *gin.Context) {
 	).Scan(&userID)
 
 	if err != nil {
-		log.Println("❌ DB INSERT ERROR:", err)
+		log.Println(" DB INSERT ERROR:", err)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}
 
-	log.Println("✅ Inserted user ID:", userID)
+	log.Println("Inserted user ID:", userID)
 
-	// 🔹 Step 4: Response
+	//  Step 4: Response
 	c.JSON(200, gin.H{
 		"user_id":  userID,
 		"username": ghUser.Login,
 	})
 }
 
-// 🔹 API endpoint for frontend to exchange code for user info
+//  API endpoint for frontend to exchange code for user info
 func GitHubAuthAPI(c *gin.Context) {
 	var req GitHubAuthRequest
 	if err := c.BindJSON(&req); err != nil {
@@ -166,7 +166,7 @@ func GitHubAuthAPI(c *gin.Context) {
 		return
 	}
 
-	log.Println("👉 API callback code:", code)
+	log.Println(" API callback code:", code)
 
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
 	if clientID == "" {
@@ -189,7 +189,7 @@ func GitHubAuthAPI(c *gin.Context) {
 		form,
 	)
 	if err != nil {
-		log.Println("❌ Token request failed:", err)
+		log.Println("Token request failed:", err)
 		c.JSON(500, gin.H{"error": "token request failed"})
 		return
 	}
@@ -212,7 +212,7 @@ func GitHubAuthAPI(c *gin.Context) {
 	client := &http.Client{}
 	userResp, err := client.Do(userReq)
 	if err != nil {
-		log.Println("❌ GitHub user fetch failed:", err)
+		log.Println(" GitHub user fetch failed:", err)
 		c.JSON(500, gin.H{"error": "user fetch failed"})
 		return
 	}
@@ -222,7 +222,7 @@ func GitHubAuthAPI(c *gin.Context) {
 	var ghUser GitHubUser
 	err = json.Unmarshal(userBody, &ghUser)
 	if err != nil {
-		log.Println("❌ JSON parse error:", err)
+		log.Println(" JSON parse error:", err)
 		c.JSON(500, gin.H{"error": "invalid github response"})
 		return
 	}
@@ -245,7 +245,7 @@ func GitHubAuthAPI(c *gin.Context) {
 	).Scan(&userID)
 
 	if err != nil {
-		log.Println("❌ DB INSERT ERROR:", err)
+		log.Println(" DB INSERT ERROR:", err)
 		c.JSON(500, gin.H{"error": err.Error()})
 		return
 	}

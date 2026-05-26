@@ -13,7 +13,7 @@ RUN go mod download
 COPY . .
 WORKDIR /app/apps/worker 
 
-# 🔥 CRITICAL FIX
+#  CRITICAL FIX
 RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -o main ./cmd/worker
 
 # -------- FINAL --------

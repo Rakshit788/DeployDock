@@ -72,8 +72,13 @@ class ApiClient {
   }
 
   async createProject(repoUrl: string, repoName?: string, userId?: number) {
-    const normalizedRepoUrl = repoUrl.trim()
-    const inferredName = repoName || normalizedRepoUrl.split('/').filter(Boolean).pop() || 'project'
+    let normalizedRepoUrl = repoUrl.trim()
+    if (normalizedRepoUrl.endsWith('.git')) {
+      // keep as-is
+    } else if (normalizedRepoUrl.match(/^https?:\/\/github\.com\/.+\/.+$/)) {
+      normalizedRepoUrl += '.git'
+    }
+    const inferredName = repoName || normalizedRepoUrl.split('/').filter(Boolean).pop()?.replace(/\.git$/, '') || 'project'
     const localUserId = typeof window !== 'undefined' ? Number(localStorage.getItem('user_id') || '0') : 0
     const resolvedUserId = userId || localUserId || 1
 

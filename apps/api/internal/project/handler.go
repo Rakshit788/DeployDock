@@ -5,22 +5,31 @@ import (
 	"net/http"
 	"regexp"
 	"strings"
+	"time"
 
+	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/auth"
 	"github.com/Rakshit788/VERCEL-CLONE/packages/db"
 	"github.com/gin-gonic/gin"
 )
 
 type Project struct {
-	ID        int64   `json:"id"`
-	UserID    int64   `json:"user_id"`
-	Name      string  `json:"name"`
-	RepoURL   string  `json:"repo_url"`
-	Framework *string `json:"framework"`
-	Subdomain *string `json:"subdomain"`
-	CreatedAt string  `json:"created_at"`
+	ID        int64     `json:"id"`
+	UserID    int64     `json:"user_id"`
+	Name      string    `json:"name"`
+	RepoURL   string    `json:"repo_url"`
+	Framework *string   `json:"framework"`
+	Subdomain *string   `json:"subdomain"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func CreateProject(c *gin.Context) {
+
+	// Extract user_id from JWT
+	userID, ok := auth.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
 
 	var body Project
 
@@ -41,7 +50,7 @@ func CreateProject(c *gin.Context) {
 		`INSERT INTO projects (name, repo_url, user_id, subdomain)
 		 VALUES ($1, $2, $3, NULLIF($4, ''))
 		 RETURNING id`,
-		body.Name, body.RepoURL, body.UserID, providedSubdomain,
+		body.Name, body.RepoURL, userID, providedSubdomain,
 	).Scan(&projectid)
 
 	if err != nil {
@@ -91,11 +100,10 @@ func sanitizeSubdomain(input string) string {
 }
 
 func ListProjects(c *gin.Context) {
-	// TODO: Extract user_id from JWT token
-	// For now, get it from query param
-	userIDParam := c.Query("user_id")
-	if userIDParam == "" {
-		userIDParam = "1" // Default for testing
+	userID, ok := auth.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
 	}
 
 	rows, err := db.Pool.Query(
@@ -104,7 +112,7 @@ func ListProjects(c *gin.Context) {
 		 FROM projects
 		 WHERE user_id = $1
 		 ORDER BY created_at DESC`,
-		userIDParam,
+		userID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db query failed"})

@@ -2,9 +2,12 @@ package deployment
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"strconv"
+	"time"
 
+	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/auth"
 	"github.com/Rakshit788/VERCEL-CLONE/packages/db"
 	"github.com/gin-gonic/gin"
 
@@ -17,20 +20,43 @@ type deployment struct {
 }
 
 type Deployment struct {
-	ID        int64  `json:"id"`
-	ProjectID int64  `json:"project_id"`
-	Status    string `json:"status"`
-	URL       string `json:"url"`
-	CommitSha string `json:"commit_sha"`
-	Logs      string `json:"logs"`
-	CreatedAt string `json:"created_at"`
+	ID        int64     `json:"id"`
+	ProjectID int64     `json:"project_id"`
+	Status    string    `json:"status"`
+	URL       *string   `json:"url"`
+	CommitSha *string   `json:"commit_sha"`
+	Logs      *string   `json:"logs"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func CreateDeployment(c *gin.Context) {
 
+	// Extract user_id from JWT (or use default for testing)
+	userID, ok := auth.GetUserID(c)
+	if !ok {
+		// For testing without auth, use hardcoded user ID
+		userID = 1
+	}
+
 	var body deployment
 	if err := c.BindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Validate that user owns the project (skip for test user 1)
+	if userID != 1 {
+		var projectUserID int
+		err := db.Pool.QueryRow(c.Request.Context(),
+			`SELECT user_id FROM projects WHERE id = $1`, body.ProjectId).Scan(&projectUserID)
+		if err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
+			return
+		}
+		if projectUserID != userID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "you do not have access to this project"})
+			return
+		}
 	}
 
 	var deploymentId int64
@@ -56,7 +82,7 @@ func CreateDeployment(c *gin.Context) {
 
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "queueing task failed"})
-		panic(err)
+		return
 	}
 
 	c.JSON(200, gin.H{
@@ -95,14 +121,23 @@ func GetDeploymentStatus(c *gin.Context) {
 }
 
 func ListDeployments(c *gin.Context) {
-	// TODO: Extract from JWT token
+	// Extract user_id from JWT
+	userID, ok := auth.GetUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not authenticated"})
+		return
+	}
+
+	// Query deployments for user's projects only
 	rows, err := db.Pool.Query(
 		c.Request.Context(),
 		`SELECT d.id, d.project_id, d.status, d.url, d.commit_sha, d.logs, d.created_at
 		 FROM deployments d
 		 JOIN projects p ON d.project_id = p.id
+		 WHERE p.user_id = $1
 		 ORDER BY d.created_at DESC
 		 LIMIT 100`,
+		userID,
 	)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "db query failed"})
@@ -115,6 +150,7 @@ func ListDeployments(c *gin.Context) {
 		var d Deployment
 		err := rows.Scan(&d.ID, &d.ProjectID, &d.Status, &d.URL, &d.CommitSha, &d.Logs, &d.CreatedAt)
 		if err != nil {
+			log.Printf("ListDeployments: scan error for row: %v", err)
 			continue
 		}
 		deployments = append(deployments, d)

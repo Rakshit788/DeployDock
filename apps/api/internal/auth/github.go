@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
 	"net/http"
@@ -29,10 +30,20 @@ type AuthResponse struct {
 	Token    string `json:"token"`
 }
 
-func GitHubLogin(c *gin.Context) {
+func githubCredentials() (string, string, error) {
 	clientID := os.Getenv("GITHUB_CLIENT_ID")
-	if clientID == "" {
-		clientID = "Ov23liqNFN2JXBlWmM54"
+	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
+	if clientID == "" || clientSecret == "" {
+		return "", "", errors.New("GitHub OAuth is not configured")
+	}
+	return clientID, clientSecret, nil
+}
+
+func GitHubLogin(c *gin.Context) {
+	clientID, _, err := githubCredentials()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "GitHub OAuth is not configured"})
+		return
 	}
 
 	url := "https://github.com/login/oauth/authorize?client_id=" + clientID + "&redirect_uri=http://localhost:3000/auth/callback&scope=user:email%20repo"
@@ -42,15 +53,10 @@ func GitHubLogin(c *gin.Context) {
 
 func GitHubCallback(c *gin.Context) {
 	code := c.Query("code")
-	log.Println(" callback code:", code)
-
-	clientID := os.Getenv("GITHUB_CLIENT_ID")
-	if clientID == "" {
-		clientID = "Ov23liqNFN2JXBlWmM54"
-	}
-	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
-	if clientSecret == "" {
-		clientSecret = "f251bc9dfbc7cea50d5a70b980aa3f0a19883c09"
+	clientID, clientSecret, err := githubCredentials()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "GitHub OAuth is not configured"})
+		return
 	}
 
 	// 🔹 Step 1: Exchange code for token
@@ -72,12 +78,9 @@ func GitHubCallback(c *gin.Context) {
 	defer resp.Body.Close()
 
 	respBody, _ := io.ReadAll(resp.Body)
-	log.Println(" token response:", string(respBody))
 
 	values, _ := url.ParseQuery(string(respBody))
 	accessToken := values.Get("access_token")
-
-	log.Println(" parsed token:", accessToken)
 
 	if accessToken == "" {
 		c.JSON(500, gin.H{
@@ -102,7 +105,6 @@ func GitHubCallback(c *gin.Context) {
 	defer userResp.Body.Close()
 
 	userBody, _ := io.ReadAll(userResp.Body)
-	log.Println(" GitHub raw user:", string(userBody))
 
 	var ghUser GitHubUser
 	err = json.Unmarshal(userBody, &ghUser)
@@ -111,8 +113,6 @@ func GitHubCallback(c *gin.Context) {
 		c.JSON(500, gin.H{"error": "invalid github response"})
 		return
 	}
-
-	log.Println("Parsed GitHub User:", ghUser.ID, ghUser.Login)
 
 	//  safety check
 	if ghUser.ID == 0 {
@@ -124,8 +124,6 @@ func GitHubCallback(c *gin.Context) {
 	}
 
 	//  Step 3: Insert into DB
-	log.Println(" Inserting user into DB...")
-
 	var userID int
 	err = db.Pool.QueryRow(context.Background(),
 		`INSERT INTO users (github_id, username, avatar_url)
@@ -143,16 +141,22 @@ func GitHubCallback(c *gin.Context) {
 		return
 	}
 
-	log.Println("Inserted user ID:", userID)
+	//  Step 4: Generate JWT and Response
+	token, err := GenerateJWT(userID, ghUser.Login)
+	if err != nil {
+		log.Println(" JWT generation error:", err)
+		c.JSON(500, gin.H{"error": "token generation failed"})
+		return
+	}
 
-	//  Step 4: Response
 	c.JSON(200, gin.H{
 		"user_id":  userID,
 		"username": ghUser.Login,
+		"token":    token,
 	})
 }
 
-//  API endpoint for frontend to exchange code for user info
+// API endpoint for frontend to exchange code for user info
 func GitHubAuthAPI(c *gin.Context) {
 	var req GitHubAuthRequest
 	if err := c.BindJSON(&req); err != nil {
@@ -166,15 +170,10 @@ func GitHubAuthAPI(c *gin.Context) {
 		return
 	}
 
-	log.Println(" API callback code:", code)
-
-	clientID := os.Getenv("GITHUB_CLIENT_ID")
-	if clientID == "" {
-		clientID = "Ov23liqNFN2JXBlWmM54"
-	}
-	clientSecret := os.Getenv("GITHUB_CLIENT_SECRET")
-	if clientSecret == "" {
-		clientSecret = "f251bc9dfbc7cea50d5a70b980aa3f0a19883c09"
+	clientID, clientSecret, err := githubCredentials()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "GitHub OAuth is not configured"})
+		return
 	}
 
 	// 🔹 Step 1: Exchange code for token
@@ -250,20 +249,34 @@ func GitHubAuthAPI(c *gin.Context) {
 		return
 	}
 
-	// 🔹 Step 4: Return response with token and GitHub token
+	// 🔹 Step 4: Generate JWT and return response
+	jwtToken, err := GenerateJWT(userID, ghUser.Login)
+	if err != nil {
+		log.Println(" JWT generation error:", err)
+		c.JSON(500, gin.H{"error": "token generation failed"})
+		return
+	}
+
 	c.JSON(200, gin.H{
 		"user_id":      userID,
 		"username":     ghUser.Login,
+		"token":        jwtToken,
 		"github_token": accessToken,
-		"token":        "jwt-token", // Should generate a real JWT
 	})
 }
 
 // GetUser returns current user info
 func GetUser(c *gin.Context) {
-	// TODO: Extract user from JWT token
+	userID, ok := GetUserID(c)
+	if !ok {
+		c.JSON(401, gin.H{"error": "unauthorized"})
+		return
+	}
+	username, _ := c.Get("username")
 	c.JSON(200, gin.H{
-		"id":       1,
-		"username": "demo-user",
+		"id":       userID,
+		"username": username,
+		"login":    username, // satisfy frontend expects user.login
 	})
 }
+

@@ -39,10 +39,35 @@ func getDeploymentDetails(deployID int64) (*DeploymentDetails, error) {
 	return &d, nil
 }
 
+func detectExposedPort(imageName string) string {
+	out, err := exec.Command(
+		"docker", "image", "inspect",
+		"--format", "{{range $p,$_ := .Config.ExposedPorts}}{{$p}}{{\"\\n\"}}{{end}}",
+		imageName,
+	).Output()
+	if err != nil {
+		logf(0, "DOCKER", "WARNING: could not inspect image ports: %v, defaulting to 3000", err)
+		return "3000"
+	}
+	ports := strings.Fields(string(out))
+	for _, p := range ports {
+		parts := strings.SplitN(p, "/", 2)
+		if len(parts) > 0 && parts[0] != "" {
+			logf(0, "DOCKER", "detected exposed port: %s", parts[0])
+			return parts[0]
+		}
+	}
+	logf(0, "DOCKER", "no exposed ports found in image, defaulting to 3000")
+	return "3000"
+}
+
 // runContainer starts a Docker container discoverable by nginx-proxy via VIRTUAL_HOST.
 func runContainer(imageName string, subdomain string) (string, error) {
 	host := deploymentHost(subdomain)
 	deployID := int64(0)
+
+	// Auto-detect exposed port from the Docker image
+	port := detectExposedPort(imageName)
 
 	// Get network from env OR fallback
 	network := strings.TrimSpace(os.Getenv("DOCKER_NETWORK"))
@@ -53,6 +78,7 @@ func runContainer(imageName string, subdomain string) (string, error) {
 	logf(deployID, "DOCKER", " Starting container deployment")
 	logf(deployID, "DOCKER", "Host: %s", host)
 	logf(deployID, "DOCKER", "Network: %s", network)
+	logf(deployID, "DOCKER", "Port: %s (auto-detected from image)", port)
 	logf(deployID, "DOCKER", "Mode: nginx-only (no host port mapping)")
 
 	cmd := exec.Command(
@@ -61,7 +87,7 @@ func runContainer(imageName string, subdomain string) (string, error) {
 		"--network", network,
 		"--label", "com.vercel-clone.managed=true",
 		"-e", fmt.Sprintf("VIRTUAL_HOST=%s", host),
-		"-e", "VIRTUAL_PORT=3000",
+		"-e", fmt.Sprintf("VIRTUAL_PORT=%s", port),
 		imageName,
 	)
 

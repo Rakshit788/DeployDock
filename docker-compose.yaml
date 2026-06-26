@@ -48,6 +48,11 @@ services:
       context: ./
       dockerfile: ./infra/docker/api.Dockerfile
     container_name: vercel_api
+    environment:
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID}
+      GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET}
     ports:
       - "8080:8080"
     depends_on:
@@ -79,8 +84,8 @@ services:
       dockerfile: ./infra/docker/worker.Dockerfile
     container_name: vercel_worker
     environment:
-      WORKER_DB_DSN: postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable
-      REDIS_ADDR: redis:6379
+      WORKER_DB_DSN: ${DATABASE_URL:-postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -99,7 +104,10 @@ services:
       dockerfile: ./infra/docker/deployer.Dockerfile
     container_name: vercel_deployment
     environment:
-      BASE_DOMAIN_SUFFIX: localhost
+      DATABASE_URL: ${DATABASE_URL:-postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable}
+      REDIS_ADDR: ${REDIS_ADDR:-redis:6379}
+      BASE_DOMAIN_SUFFIX: ${BASE_DOMAIN_SUFFIX:-localhost}
+      DOCKER_NETWORK: ${DOCKER_NETWORK:-vercel-clone_vercel_network}
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     depends_on:
@@ -107,6 +115,75 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - vercel_network
+
+  k6-api-baseline:
+    image: grafana/k6:0.53.0
+    profiles: ["load-test"]
+    environment:
+      BASE_URL: http://api:8080
+      TEST_USER_ID: ${TEST_USER_ID:-1}
+    volumes:
+      - ./tests/load:/scripts:ro
+      - ./tests/load/results:/results
+    command: ["run", "--summary-export=/results/api-baseline-summary.json", "/scripts/api-baseline.js"]
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - vercel_network
+
+  k6-deployment-queue:
+    image: grafana/k6:0.53.0
+    profiles: ["load-test"]
+    environment:
+      BASE_URL: http://api:8080
+      TEST_PROJECT_ID: ${TEST_PROJECT_ID:-}
+      VUS: ${VUS:-4}
+      ITERATIONS_PER_VU: ${ITERATIONS_PER_VU:-1}
+    volumes:
+      - ./tests/load:/scripts:ro
+      - ./tests/load/results:/results
+    command: ["run", "--summary-export=/results/deployment-queue-summary.json", "/scripts/deployment-queue.js"]
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - vercel_network
+
+  k6-deployment-lifecycle:
+    image: grafana/k6:0.53.0
+    profiles: ["load-test"]
+    environment:
+      BASE_URL: http://api:8080
+      TEST_PROJECT_ID: ${TEST_PROJECT_ID:-}
+      CONCURRENT_VUS: ${CONCURRENT_VUS:-4}
+      SUSTAINED_VUS: ${SUSTAINED_VUS:-8}
+      POLL_INTERVAL: ${POLL_INTERVAL:-5}
+      MAX_POLL: ${MAX_POLL:-60}
+    volumes:
+      - ./tests/load:/scripts:ro
+      - ./tests/load/results:/results
+    command: ["run", "--summary-export=/results/deployment-lifecycle-summary.json", "/scripts/deployment-lifecycle.js"]
+    depends_on:
+      api:
+        condition: service_started
+    networks:
+      - vercel_network
+
+  k6-api-stress:
+    image: grafana/k6:0.53.0
+    profiles: ["load-test"]
+    environment:
+      BASE_URL: http://api:8080
+    volumes:
+      - ./tests/load:/scripts:ro
+      - ./tests/load/results:/results
+    command: ["run", "--summary-export=/results/api-stress-summary.json", "/scripts/api-stress.js"]
+    depends_on:
+      api:
+        condition: service_started
     networks:
       - vercel_network
 

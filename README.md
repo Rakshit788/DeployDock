@@ -98,14 +98,14 @@ The platform follows a microservices architecture with async task processing:
 ### Limitations 
 - Build commands are hardcoded (npm run build) or DB defaults
 - GitHub credentials hardcoded in source (should use env vars)
-- No automatic database migrations on startup
+- Migrations run automatically when a service connects to PostgreSQL
 - Docker builds from Git URLs require git in engine (or use local clone)
 - No webhook support for automatic deployments on push
 - `*.localhost` wildcard hostnames are not universally supported on all OS/browser setups
 
 ## Project Status
 
-**Last Updated**: April 21, 2026
+**Last Updated**: June 25, 2026
 
 | Component | Status | Notes |
 |-----------|--------|-------|
@@ -119,6 +119,7 @@ The platform follows a microservices architecture with async task processing:
 | Domain Routing |  Working | Deployments are served through nginx host-based routing |
 | Worker Service | Working | Builds and enqueues deploy tasks |
 | Deployer Service |  Working | Deploys containers with nginx routing |
+| Load Testing |  Passed | Baseline, deployment queue (4 VUs), API stress (100 spike, 30/s soak) |
 
 ##  Tech Stack
 
@@ -169,6 +170,10 @@ The platform follows a microservices architecture with async task processing:
    # GitHub OAuth credentials (get from GitHub Settings > Developer Settings > OAuth Apps)
    GITHUB_CLIENT_ID=your_github_client_id
    GITHUB_CLIENT_SECRET=your_github_client_secret
+
+   # Optional infrastructure overrides (Docker Compose defaults are shown)
+   DATABASE_URL=postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable
+   REDIS_ADDR=redis:6379
    
    # Optional: custom domain suffix for deployed apps (default: localhost)
    BASE_DOMAIN_SUFFIX=localhost
@@ -195,6 +200,9 @@ The platform follows a microservices architecture with async task processing:
    # Expected response:
    # {"status":"ok"}
    ```
+
+   Database migrations run automatically when the API, worker, or deployer
+   connects. Applied versions are recorded in `schema_migrations`.
 
 ### Quick Test
 
@@ -385,6 +393,38 @@ pending → building → built → deploying → deployed
  failed   failed    failed    failed    ← Any error state
 ```
 
+##  Load Testing
+
+Load testing is done with **k6** via Docker Compose profiles. All tests passed with 0% error rate.
+
+### Test Suite
+
+| Test | Description | How to Run |
+|------|-------------|------------|
+| **API Baseline** | Read-only: health, project list, deployment list (5 VUs, 60s) | `docker compose --profile load-test run --rm k6-api-baseline` |
+| **Deployment Queue** | Creates deployment jobs (configurable VUs) | `$env:TEST_PROJECT_ID='1'; $env:VUS='4'; docker compose --profile load-test run --rm k6-deployment-queue` |
+| **Deployment Lifecycle** | Full create → poll → verify flow | `docker compose --profile load-test run --rm k6-deployment-lifecycle` |
+| **API Stress** | 4 stages: warmup (10) → ramp (50) → spike (100) → soak (30/s) | `docker compose --profile load-test run --rm k6-api-stress` |
+
+### Results Summary
+
+| Test | Requests | Error Rate | p(95) Latency | Throughput |
+|------|----------|-----------|---------------|-----------|
+| **Baseline** (5 VUs) | 676 | **0%** | 3ms | 11.1/s |
+| **Deployment Queue** (4 VUs) | 5 | **0%** | 28ms | 4.8/s |
+| **Stress** (100 VUs spike, 30/s soak) | **46,550** | **0%** | **2.7ms** | **221.7/s** |
+
+All thresholds passed. The API handles 100 concurrent users with zero errors and sub-3ms p95 latency. See [LOAD_TEST_RESULTS.md](LOAD_TEST_RESULTS.md) and [tests/load/](tests/load/) for details.
+
+### Bug Fixes Applied During Testing
+
+| Bug | Location | Fix |
+|-----|----------|-----|
+| `panic(err)` in HTTP handler | `deployment/handler.go` | Replaced with proper error return |
+| pgx v5 NULL/timestamp scan failures | `deployment/handler.go` | Changed `URL`, `CommitSha`, `Logs` to `*string`; `CreatedAt` to `time.Time` |
+| Baseline test missing auth headers | `api-baseline.js` | Added `setup()` to acquire JWT token |
+| Missing auth middleware on create-deployment | `main.go` | Added `auth.AuthMiddleware()` |
+
 ##  Known Limitations
 1. **Local wildcard DNS behavior varies by OS/browser**
    - nginx-proxy routes correctly using `VIRTUAL_HOST`
@@ -405,7 +445,6 @@ pending → building → built → deploying → deployed
 ### Medium Severity
 - API returns 200 on JSON bind errors (missing early return)
 - Worker panic on queue enqueue failure (should retry gracefully)
-- No automatic database migrations on startup
 - No input validation on endpoints
 
 

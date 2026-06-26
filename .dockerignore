@@ -1,0 +1,11 @@
+.git
+.gitignore
+node_modules
+.next
+apps/frontend/node_modules
+apps/frontend/.next
+apps/frontend/out
+apps/api/server.exe
+apps/worker/worker.exe
+apps/deployer/deployer.exe
+tests/load/results

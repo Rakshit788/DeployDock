@@ -145,6 +145,12 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 	}
 	log(deployID, "DOCKER", "✓ RepoURL validation passed")
 
+	// Normalize: append .git if missing (Docker needs it for git-based builds)
+	if !strings.HasSuffix(project.RepoURL, ".git") && strings.Contains(project.RepoURL, "github.com") {
+		project.RepoURL += ".git"
+		logf(deployID, "DOCKER", "ℹ Normalized RepoURL → %q", project.RepoURL)
+	}
+
 	// Wrap in a hard 10-minute timeout so it never hangs forever
 	buildCtx, cancel := context.WithTimeout(ctx, 10*time.Minute)
 	defer cancel()

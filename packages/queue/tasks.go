@@ -6,8 +6,12 @@ import (
 
 var Queue *asynq.Client
 
-func InitQueue() {
+func InitQueue(addr string) {
+	if addr == "" {
+		addr = "redis:6379"
+	}
+
 	Queue = asynq.NewClient(asynq.RedisClientOpt{
-		Addr: "redis:6379",
+		Addr: addr,
 	})
 }

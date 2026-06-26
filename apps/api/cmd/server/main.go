@@ -2,6 +2,7 @@ package main
 
 import (
 	"log"
+	"os"
 
 	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/auth"
 	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/deployment"
@@ -19,11 +20,12 @@ func main() {
 		log.Println("No .env found")
 	}
 
-	db.InitDB("postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable")
+	db.InitDB(getenv("DATABASE_URL", "postgres://postgres:password@postgres:5432/vercel_clone?sslmode=disable"))
 
-	redis.InitRedis("redis:6379")
+	redisAddr := getenv("REDIS_ADDR", "redis:6379")
+	redis.InitRedis(redisAddr)
 
-	tasks.InitQueue()
+	tasks.InitQueue(redisAddr)
 
 	r := gin.Default()
 
@@ -47,15 +49,24 @@ func main() {
 	r.GET("/auth/github/login", auth.GitHubLogin)
 	r.GET("/auth/github/callback", auth.GitHubCallback)
 	r.POST("/api/auth/github", auth.GitHubAuthAPI)
-	r.GET("/api/auth/user", auth.GetUser)
+	r.GET("/api/auth/user", auth.AuthMiddleware(), auth.GetUser)
+	r.GET("/api/test/token", auth.GenerateTestToken) // Development only
 
-	r.POST("/create-project", project.CreateProject)
-	r.GET("/api/project/list", project.ListProjects)
+	// Protected routes (require authentication)
+	r.POST("/create-project", auth.AuthMiddleware(), project.CreateProject)
+	r.GET("/api/project/list", auth.AuthMiddleware(), project.ListProjects)
 
-	//  deployment routes
-	r.POST("/create-deployment", deployment.CreateDeployment)
-	r.GET("/deployments/:id/status", deployment.GetDeploymentStatus)
-	r.GET("/api/deployment/list", deployment.ListDeployments)
+	//  deployment routes - temporarily without auth for testing
+	r.POST("/create-deployment", auth.AuthMiddleware(), deployment.CreateDeployment)
+	r.GET("/deployments/:id/status", auth.AuthMiddleware(), deployment.GetDeploymentStatus)
+	r.GET("/api/deployment/list", auth.AuthMiddleware(), deployment.ListDeployments)
 
 	r.Run(":8080")
+}
+
+func getenv(key, fallback string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return fallback
 }

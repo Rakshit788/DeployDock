@@ -55,6 +55,19 @@ export default function Dashboard() {
     fetchData()
   }, [router])
 
+  useEffect(() => {
+    const hasActiveDeployment = deployments.some(
+      d => d.status !== 'deployed' && d.status !== 'failed'
+    )
+    if (!hasActiveDeployment) return
+
+    const interval = setInterval(() => {
+      apiClient.listDeployments().then(setDeployments).catch(() => {})
+    }, 3000)
+
+    return () => clearInterval(interval)
+  }, [deployments])
+
   const fetchData = async () => {
     try {
       // Fetch repos from GitHub

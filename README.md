@@ -424,6 +424,8 @@ All thresholds passed. The API handles 100 concurrent users with zero errors and
 | pgx v5 NULL/timestamp scan failures | `deployment/handler.go` | Changed `URL`, `CommitSha`, `Logs` to `*string`; `CreatedAt` to `time.Time` |
 | Baseline test missing auth headers | `api-baseline.js` | Added `setup()` to acquire JWT token |
 | Missing auth middleware on create-deployment | `main.go` | Added `auth.AuthMiddleware()` |
+| `api`/`worker`/`deployment` containers exited permanently on a transient DB DNS resolution failure at startup | `docker-compose.yaml` | Added `restart: on-failure` to `api`, `worker`, and `deployment` services |
+| Dashboard only fetched deployment status once (on page load / right after clicking Deploy), so a deployment appeared stuck until an unrelated later Deploy click happened to refresh it | `frontend/app/dashboard/page.tsx` | Added polling (every 3s) that refetches deployments while any are in a non-terminal status (`pending`/`building`/`deploying`) |
 
 ##  Known Limitations
 1. **Local wildcard DNS behavior varies by OS/browser**

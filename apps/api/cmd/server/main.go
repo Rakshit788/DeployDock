@@ -7,6 +7,7 @@ import (
 	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/auth"
 	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/deployment"
 	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/project"
+	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/webhook"
 	"github.com/Rakshit788/VERCEL-CLONE/packages/db"
 	tasks "github.com/Rakshit788/VERCEL-CLONE/packages/queue"
 	"github.com/Rakshit788/VERCEL-CLONE/packages/redis"
@@ -60,6 +61,10 @@ func main() {
 	r.POST("/create-deployment", auth.AuthMiddleware(), deployment.CreateDeployment)
 	r.GET("/deployments/:id/status", auth.AuthMiddleware(), deployment.GetDeploymentStatus)
 	r.GET("/api/deployment/list", auth.AuthMiddleware(), deployment.ListDeployments)
+
+	// GitHub calls this directly (no JWT) — authenticity is verified via
+	// the per-project HMAC signature instead of AuthMiddleware.
+	r.POST("/webhooks/github", webhook.GitHubWebhook)
 
 	r.Run(":8080")
 }

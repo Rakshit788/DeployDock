@@ -126,13 +126,14 @@ func GitHubCallback(c *gin.Context) {
 	//  Step 3: Insert into DB
 	var userID int
 	err = db.Pool.QueryRow(context.Background(),
-		`INSERT INTO users (github_id, username, avatar_url)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO users (github_id, username, avatar_url, github_access_token)
+		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (github_id)
 		 DO UPDATE SET username = EXCLUDED.username,
-		 avatar_url = EXCLUDED.avatar_url
+		 avatar_url = EXCLUDED.avatar_url,
+		 github_access_token = EXCLUDED.github_access_token
 		 RETURNING id`,
-		ghUser.ID, ghUser.Login, ghUser.AvatarURL,
+		ghUser.ID, ghUser.Login, ghUser.AvatarURL, accessToken,
 	).Scan(&userID)
 
 	if err != nil {
@@ -234,13 +235,14 @@ func GitHubAuthAPI(c *gin.Context) {
 	// 🔹 Step 3: Insert into DB
 	var userID int
 	err = db.Pool.QueryRow(context.Background(),
-		`INSERT INTO users (github_id, username, avatar_url)
-		 VALUES ($1, $2, $3)
+		`INSERT INTO users (github_id, username, avatar_url, github_access_token)
+		 VALUES ($1, $2, $3, $4)
 		 ON CONFLICT (github_id)
 		 DO UPDATE SET username = EXCLUDED.username,
-		 avatar_url = EXCLUDED.avatar_url
+		 avatar_url = EXCLUDED.avatar_url,
+		 github_access_token = EXCLUDED.github_access_token
 		 RETURNING id`,
-		ghUser.ID, ghUser.Login, ghUser.AvatarURL,
+		ghUser.ID, ghUser.Login, ghUser.AvatarURL, accessToken,
 	).Scan(&userID)
 
 	if err != nil {

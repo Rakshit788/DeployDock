@@ -143,7 +143,7 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 		log(deployID, "DOCKER", " ERROR: project.RepoURL is empty")
 		return "", "", fmt.Errorf("project.RepoURL is empty — cannot build Docker image")
 	}
-	log(deployID, "DOCKER", "✓ RepoURL validation passed")
+	log(deployID, "DOCKER", "RepoURL validation passed")
 
 	// Normalize: append .git if missing (Docker needs it for git-based builds)
 	if !strings.HasSuffix(project.RepoURL, ".git") && strings.Contains(project.RepoURL, "github.com") {
@@ -157,14 +157,17 @@ func buildDockerImage(ctx context.Context, project *ProjectDetails, deployID int
 
 	log(deployID, "DOCKER", " Context timeout set to 10 minutes")
 	logf(deployID, "DOCKER", "↳ Executing: docker buildx build --load -t %s %s", imageName, project.RepoURL)
-	log(deployID, "DOCKER", "↳ Flags: --no-cache --load")
+	log(deployID, "DOCKER", "↳ Flags: --load (layer cache reused across builds)")
 
 	startTime := time.Now()
 
+	// No --no-cache: BuildKit's local build cache is content-addressed, so
+	// unchanged layers (base image, npm install when package.json/lockfile
+	// haven't changed) are reused across deployments of the same project
+	// instead of being rebuilt from scratch every time.
 	cmd := exec.CommandContext(buildCtx,
 		"docker", "buildx", "build",
 		"--load",
-		"--no-cache",
 		"-t", imageName,
 		project.RepoURL,
 	)

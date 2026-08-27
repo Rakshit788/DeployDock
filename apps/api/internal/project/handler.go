@@ -1,13 +1,19 @@
 package project
 
 import (
+	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
+	"log"
 	"net/http"
+	"os"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/auth"
+	"github.com/Rakshit788/VERCEL-CLONE/apps/api/internal/githubapi"
 	"github.com/Rakshit788/VERCEL-CLONE/packages/db"
 	"github.com/gin-gonic/gin"
 )
@@ -73,11 +79,79 @@ func CreateProject(c *gin.Context) {
 		providedSubdomain = generated
 	}
 
-	c.JSON(http.StatusOK, gin.H{
-		"project_id": projectid,
-		"subdomain":  providedSubdomain,
-	})
+	webhookRegistered, webhookErr := registerGitHubWebhook(int64(userID), projectid, body.RepoURL)
+	if webhookErr != nil {
+		log.Printf("CreateProject: webhook registration skipped for project %d: %v", projectid, webhookErr)
+	}
 
+	resp := gin.H{
+		"project_id":         projectid,
+		"subdomain":          providedSubdomain,
+		"webhook_registered": webhookRegistered,
+	}
+	if !webhookRegistered && webhookErr != nil {
+		resp["webhook_error"] = webhookErr.Error()
+	}
+
+	c.JSON(http.StatusOK, resp)
+
+}
+
+// registerGitHubWebhook creates a push webhook on the project's GitHub repo
+// so that every push triggers a new deployment automatically. It uses the
+// access token captured during GitHub OAuth login. Failure here is
+// non-fatal to project creation — the user can still trigger deploys
+// manually via create-deployment.
+func registerGitHubWebhook(userID, projectID int64, repoURL string) (bool, error) {
+	var accessToken string
+	err := db.Pool.QueryRow(context.Background(),
+		`SELECT COALESCE(github_access_token, '') FROM users WHERE id = $1`, userID,
+	).Scan(&accessToken)
+	if err != nil {
+		return false, fmt.Errorf("looking up github access token: %w", err)
+	}
+	if accessToken == "" {
+		return false, fmt.Errorf("user has no stored github access token (log in via GitHub OAuth first)")
+	}
+
+	owner, repo, err := githubapi.ParseOwnerRepo(repoURL)
+	if err != nil {
+		return false, err
+	}
+
+	secret, err := generateWebhookSecret()
+	if err != nil {
+		return false, fmt.Errorf("generating webhook secret: %w", err)
+	}
+
+	baseURL := strings.TrimRight(os.Getenv("WEBHOOK_BASE_URL"), "/")
+	if baseURL == "" {
+		baseURL = "http://localhost:8080"
+	}
+	callbackURL := baseURL + "/webhooks/github"
+
+	hookID, err := githubapi.CreateWebhook(accessToken, owner, repo, callbackURL, secret)
+	if err != nil {
+		return false, fmt.Errorf("creating github webhook: %w", err)
+	}
+
+	_, err = db.Pool.Exec(context.Background(),
+		`UPDATE projects SET webhook_secret = $1, github_hook_id = $2 WHERE id = $3`,
+		secret, hookID, projectID,
+	)
+	if err != nil {
+		return false, fmt.Errorf("saving webhook secret: %w", err)
+	}
+
+	return true, nil
+}
+
+func generateWebhookSecret() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func sanitizeSubdomain(input string) string {

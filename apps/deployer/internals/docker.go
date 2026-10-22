@@ -15,13 +15,13 @@ type DeploymentDetails struct {
 	Subdomain string
 }
 
-func deploymentHost(subdomain string) string {
+func deploymentHost(subdomain string, deployID int64) string {
 	domainSuffix := strings.TrimSpace(os.Getenv("BASE_DOMAIN_SUFFIX"))
 	if domainSuffix == "" {
 		domainSuffix = "localhost"
 	}
 
-	return fmt.Sprintf("%s.%s", subdomain, domainSuffix)
+	return fmt.Sprintf("%s-%d.%s", subdomain, deployID, domainSuffix)
 }
 
 func getDeploymentDetails(deployID int64) (*DeploymentDetails, error) {
@@ -62,9 +62,8 @@ func detectExposedPort(imageName string) string {
 }
 
 // runContainer starts a Docker container discoverable by nginx-proxy via VIRTUAL_HOST.
-func runContainer(imageName string, subdomain string) (string, error) {
-	host := deploymentHost(subdomain)
-	deployID := int64(0)
+func runContainer(imageName string, subdomain string, deployID int64) (string, error) {
+	host := deploymentHost(subdomain, deployID)
 
 	// Auto-detect exposed port from the Docker image
 	port := detectExposedPort(imageName)
@@ -86,6 +85,7 @@ func runContainer(imageName string, subdomain string) (string, error) {
 		"-d",
 		"--network", network,
 		"--label", "com.vercel-clone.managed=true",
+		"--label", fmt.Sprintf("com.vercel-clone.deployment-id=%d", deployID),
 		"-e", fmt.Sprintf("VIRTUAL_HOST=%s", host),
 		"-e", fmt.Sprintf("VIRTUAL_PORT=%s", port),
 		imageName,

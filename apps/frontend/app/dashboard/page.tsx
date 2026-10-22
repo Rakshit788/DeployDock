@@ -415,10 +415,11 @@ export default function Dashboard() {
                             {deployingProject === project.id ? 'Deploying...' : 'Deploy'}
                           </button>
                           <a
-                            href={`https://${project.subdomain}.vercelclone.local`}
+                            href={projectDeployments.find(dep => dep.status === 'deployed' && dep.url)?.url || undefined}
+                            aria-disabled={!projectDeployments.some(dep => dep.status === 'deployed' && dep.url)}
+                            className={`bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition font-medium text-sm ${projectDeployments.some(dep => dep.status === 'deployed' && dep.url) ? '' : 'pointer-events-none opacity-50'}`}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded transition font-medium text-sm"
                           >
                             Visit
                           </a>
@@ -438,6 +439,16 @@ export default function Dashboard() {
                                   {dep.status}
                                 </span>
                                 {new Date(dep.created_at).toLocaleString()}
+                                {dep.status === 'deployed' && dep.url && (
+                                  <a
+                                    href={dep.url}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="ml-3 text-blue-400 hover:text-blue-300"
+                                  >
+                                    Visit deployment →
+                                  </a>
+                                )}
                               </div>
                             ))}
                           </div>

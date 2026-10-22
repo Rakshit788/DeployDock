@@ -75,7 +75,7 @@ func HandleDeploy(ctx context.Context, t *asynq.Task) error {
 	// 3. Run Docker container
 	log(dID, "DOCKER", "starting Docker container…")
 	startTime := time.Now()
-	containerID, err := runContainer(details.ImageURL, details.Subdomain)
+	containerID, err := runContainer(details.ImageURL, details.Subdomain, dID)
 	duration := time.Since(startTime)
 
 	if err != nil {
@@ -95,7 +95,7 @@ func HandleDeploy(ctx context.Context, t *asynq.Task) error {
 	}
 	log(dID, "DB", " Container info saved")
 
-	host := deploymentHost(details.Subdomain)
+	host := deploymentHost(details.Subdomain, dID)
 	liveURL := fmt.Sprintf("http://%s", host)
 	logf(dID, "DB", "updating live URL → %s", liveURL)
 	if err := updateDeploymentURL(dID, liveURL); err != nil {

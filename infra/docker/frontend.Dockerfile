@@ -3,6 +3,9 @@ FROM node:20-alpine AS builder
 
 WORKDIR /app
 
+ARG NEXT_PUBLIC_DEPLOYMENT_DOMAIN_SUFFIX=localhost
+ENV NEXT_PUBLIC_DEPLOYMENT_DOMAIN_SUFFIX=$NEXT_PUBLIC_DEPLOYMENT_DOMAIN_SUFFIX
+
 # Copy package files
 COPY apps/frontend/package.json apps/frontend/package-lock.json* ./
 
